@@ -458,6 +458,8 @@ function resvgOf(svg, width) {
 
 const dataUrl = (png) => 'data:image/png;base64,' + Buffer.from(png).toString('base64');
 const sheet = (w, h, body) => new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`, { font: { fontFiles: fonts(), loadSystemFonts: false, defaultFontFamily: 'Space Mono' } }).render().asPng();
+/** A PNG drawn from SVG with the bundled fonts (the maker's second-look sheets need real type on any server). */
+export const sheetPng = sheet;
 
 /** The logo as people meet it: full size, then cropped round at 128 and 48 px on X's light and dark. */
 export function logoSheet(png) {

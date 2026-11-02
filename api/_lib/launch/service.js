@@ -43,6 +43,7 @@ import {
 import { badWords, cleanSentence, isHouse } from '../words.js';
 import { pumpfun } from './adapters/pumpfun.js';
 import { adapterFor, adapterOf, padOf, pickerView, statusOf } from './launchpads.js';
+import { chartOf, factsOf } from './facts.js';
 import { cuPriceFor } from './chain.js';
 import { BRAND } from '../brand.js';
 
@@ -202,6 +203,8 @@ export function sharesOf(b, s) {
  * deps: {
  *   rpc, store (engine DepositStore, or null: not set up), custody (engine Custody, or null),
  *   getKit(kitId) -> wagbi kit json | null, putMeta(name, json, kit) -> public url,
+ *   siteFor({ coinId, kit, name, ticker }) -> the coin's own website (siteindex.js), or null: the metadata's website
+ *     (the coin's page on the brand's site when there is no siteFor, or it fails),
  *   readCoin(kitId) -> public launch record | null, writeCoin(record),
  *   settings (settings.js), checkPublic (engine publicChecker, or null), params, now, log, runMs, timing
  * }
@@ -377,8 +380,9 @@ export function createLaunchService(d) {
       phase,
       steps,
       launch: landed
-        ? { mint: landed.mint, links: { ...padLinks(rec, landed.mint), coin: links.coin(rec.kitId), mint: links.token(landed.mint), createTx: links.tx(landed.sig), splitTx: split ? links.tx(split.sig) : null } }
+        ? { mint: landed.mint, links: { ...padLinks(rec, landed.mint), coin: rec.coin.links?.website || links.coin(rec.kitId), mint: links.token(landed.mint), chart: chartOf(landed.mint, rec.cluster), createTx: links.tx(landed.sig), splitTx: split ? links.tx(split.sig) : null } }
         : null,
+      facts: factsOf(rec.launchpad ?? 'pumpfun', rec.currency ?? 'SOL'),
       returns,
       refund: { available: refundOpen, from: decision ? null : rec.refundFrom },
       problem,
@@ -406,7 +410,9 @@ export function createLaunchService(d) {
     if (lock && !lock.free) throw bad('this coin is launching from another deposit right now. wait for it, or make a new one.');
 
     const imageUrl = kit.logo;
-    const website = links.coin(coinId);
+    // the coin's own website (wagbi.fun/<slug>), for its launching design and its name as launched
+    const site = d.siteFor ? await d.siteFor({ coinId, kit, name: b.name, ticker: b.ticker }).catch((e) => (log({ evt: 'launch.site_failed', kitId: coinId, error: errText(e) }), null)) : null;
+    const website = site || links.coin(coinId);
     const json = metadataJson(buildMetadata({ name: b.name, ticker: b.ticker, description: b.bio, imageUrl, site: s.publicSite, x: b.x, telegram: null, website }));
     const uri = await d.putMeta(metaName(json), json, kit);
     if (uri.length > URI_MAX) throw new LaunchError('config', 'metadata uri too long', 'launching isn\'t set up right on this site. nothing was sent.');
@@ -884,7 +890,7 @@ export function createLaunchService(d) {
     if (!(await d.readCoin(rec.kitId))) {
       await d.writeCoin({
         v: 1, kitId: rec.kitId, cluster: rec.cluster, chain: rec.chain ?? 'solana', launchpad: rec.launchpad ?? 'pumpfun', currency: rec.currency ?? 'SOL', versionId: rec.versionId ?? rec.kitId, version: rec.version ?? 1, mint: landed.mint, name: rec.coin.name, ticker: rec.coin.ticker, bio: rec.coin.lore,
-        image: rec.coin.imageUrl, uri: rec.coin.uri, x: rec.coin.links.x, payout: rec.payout.address,
+        image: rec.coin.imageUrl, uri: rec.coin.uri, x: rec.coin.links.x, website: rec.coin.links.website ?? null, payout: rec.payout.address,
         feeModel, split: rec.shares.map((x) => ({ role: x.role, address: x.address, bps: x.bps })), splitLocked: feeModel === 'split', options: rec.options ?? {}, ...(prep ? { setup: prep } : {}),
         allocation: [], firstBuyLamports: rec.firstBuyLamports, createTx: landed.sig, splitTx: splitSig, mintSig, launchedAt: landed.at,
       });
@@ -1015,9 +1021,16 @@ export function createLaunchService(d) {
     const c = await d.readCoin(kitId);
     if (!c) return null;
     const pad = adOf(c).links(c.mint, c.cluster);
+    const q = c.cluster === 'devnet' ? '?cluster=devnet' : '';
     return {
       ...c, feeModel: c.feeModel ?? 'split', launchpadName: padOf(c.launchpad ?? 'pumpfun')?.name ?? 'pump.fun',
-      links: { pump: (c.launchpad ?? 'pumpfun') === 'pumpfun' ? pad?.url ?? null : null, pad, mint: `https://solscan.io/token/${c.mint}${c.cluster === 'devnet' ? '?cluster=devnet' : ''}`, coin: links.coin(kitId) },
+      facts: factsOf(c.launchpad ?? 'pumpfun', c.currency ?? 'SOL'),
+      links: {
+        pump: (c.launchpad ?? 'pumpfun') === 'pumpfun' ? pad?.url ?? null : null, pad, mint: `https://solscan.io/token/${c.mint}${q}`, coin: c.website || links.coin(kitId),
+        chart: chartOf(c.mint, c.cluster),
+        createTx: c.createTx ? `https://solscan.io/tx/${c.createTx}${q}` : null,
+        splitTx: c.splitTx ? `https://solscan.io/tx/${c.splitTx}${q}` : null,
+      },
     };
   }
 

@@ -10,7 +10,7 @@ export const hasUsers = () => !!token();
 const path = (key) => `u/${key}/chats.json`;
 
 export const MAX_CHATS = 100;
-const MAX_BYTES = 400_000;
+const MAX_BYTES = 3_000_000;
 const ID = /^[A-Za-z0-9_-]{4,40}$/;
 
 export async function readChats(key) {
@@ -37,15 +37,25 @@ export async function clearChats(key) {
 export function cleanChat(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
   if (typeof c.id !== 'string' || !ID.test(c.id) || typeof c.sentence !== 'string' || typeof c.t !== 'number') return null;
-  if (c.sentence.length > 400 || JSON.stringify(c).length > 20_000) return null;
+  // a chat with its turns (the replies, both designs of each) runs to a few kB a turn
+  if (c.sentence.length > 700 || JSON.stringify(c).length > 120_000) return null;
   const { pending, ...rest } = c; // a make running on one device isn't anyone else's business
   void pending;
   return rest;
 }
 
 const turns = (c) => (Array.isArray(c.turns) ? c.turns.length : c.kit ? 1 : 0);
-/** One chat over another: the one that has gone further, then the newer. */
-const better = (a, b) => (turns(a) !== turns(b) ? (turns(a) > turns(b) ? a : b) : (a.t || 0) >= (b.t || 0) ? a : b);
+const changed = (c) => c.u || c.t || 0;
+/**
+ * One chat over another: the one that has gone further, then the one changed last (a design picked, a rename). A
+ * name given on one device survives a newer copy from another that didn't rename it: the latest name wins on its own.
+ */
+function better(a, b) {
+  const win = turns(a) !== turns(b) ? (turns(a) > turns(b) ? a : b) : changed(a) >= changed(b) ? a : b;
+  const named = (a.titleAt || 0) >= (b.titleAt || 0) ? a : b;
+  if (named === win || !named.titleAt) return win;
+  return { ...win, title: named.title ?? null, titleAt: named.titleAt };
+}
 
 /**
  * Merges a device's chats into the account's. Deletions win over older copies (a chat deleted on one device stays

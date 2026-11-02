@@ -3,15 +3,22 @@ import { BRAND } from './brand.js';
 // Every message a visitor can see lives here: lowercase, plain, nothing about money.
 export const MESSAGES = {
   empty: 'type one sentence first.',
-  too_long: 'keep it to one sentence, 140 characters at most.',
+  too_long: 'keep it under 600 characters.',
   real_person: `${BRAND.name} does not make coins about real people. try a made up character instead.`,
   nope: `${BRAND.name} will not make that one. try another idea.`,
   slow: 'that is a lot of coins for one hour. try again a little later.',
   resting: `${BRAND.name} is resting, back tomorrow.`,
+  busy: `${BRAND.name} is busy making other coins right now. try again in a minute.`,
   jam: 'something went wrong on that one. try it again.',
   off: `${BRAND.name} can not make coins right now. try again soon.`,
+  no_art: `${BRAND.name}'s picture maker is down right now, so no coin came out. try again in a little while.`,
   not_found: 'this coin is not here.',
   signin: 'sign in first.',
+  bad_file: 'that file is not a picture we can use. try a png, jpg, webp or gif.',
+  file_too_big: 'that picture is too big. try a smaller one.',
+  too_many_files: 'four pictures at most.',
+  cross_site: `send it from ${BRAND.name} itself.`,
+  voice_rest: 'the mic is resting for today. type your idea instead.',
 };
 
 const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' };
@@ -34,6 +41,25 @@ export async function readJson(req, maxBytes = 2048) {
     return null;
   }
 }
+
+/**
+ * A browser request from this site, not another one's page. A browser sends Origin on every POST it makes for a
+ * page; another site's page can send a "simple" POST (text/plain, no preflight) and spend this site's money with it,
+ * so a POST that names another origin is turned away. No Origin: not a browser page (curl and the like), which the
+ * per-IP limits and the daily cap handle.
+ */
+export function sameOrigin(req) {
+  const origin = req.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === (req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? new URL(req.url).host);
+  } catch {
+    return false;
+  }
+}
+
+/** The request says it is JSON (a page's fetch does; a cross-site form or a "simple" POST can't without a preflight). */
+export const isJson = (req) => /^application\/json\b/i.test(req.headers.get('content-type') || '');
 
 export function clientIp(req) {
   const real = req.headers.get('x-real-ip') ?? req.headers.get('x-vercel-forwarded-for');

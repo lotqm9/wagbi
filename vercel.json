@@ -3,14 +3,15 @@
   "buildCommand": "",
   "functions": {
     "api/make.js": {
-      "maxDuration": 300,
-      "includeFiles": "api/_fonts/**"
+      "maxDuration": 800,
+      "includeFiles": "{api/_fonts/**,node_modules/@img/**}"
     },
     "api/kit/[id].js": {
       "maxDuration": 10
     },
     "api/launch.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "includeFiles": "node_modules/@meteora-ag/dynamic-bonding-curve-sdk/dist/math.cjs"
     },
     "api/coins.js": {
       "maxDuration": 30
@@ -20,6 +21,14 @@
     },
     "api/auth.js": {
       "maxDuration": 15
+    },
+    "api/upload.js": {
+      "maxDuration": 30,
+      "includeFiles": "node_modules/@img/**"
+    },
+    "api/site.js": {
+      "maxDuration": 30,
+      "includeFiles": "node_modules/@img/**"
     }
   },
   "rewrites": [
@@ -54,6 +63,37 @@
     {
       "source": "/k/:kit",
       "destination": "/index.html"
+    },
+    {
+      "source": "/coins",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/coin/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/example/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
+      "source": "/:slug([A-Za-z0-9][A-Za-z0-9-]{1,47})",
+      "destination": "/api/site?slug=:slug"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/vendor/:path*",
+      "destination": "/",
+      "permanent": false
     }
   ],
   "crons": [
@@ -69,6 +109,27 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/((?!api/|tool/).*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), payment=(), microphone=(self)"
         }
       ]
     },

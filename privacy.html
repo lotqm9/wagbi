@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>privacy · wagbi</title>
+<meta name="description" content="what wagbi keeps, why, and who else touches it.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3CclipPath id='o'%3E%3Ccircle cx='100' cy='100' r='78'/%3E%3C/clipPath%3E%3C/defs%3E%3Ccircle cx='100' cy='100' r='78' fill='%230b0b0c'/%3E%3Cg clip-path='url(%23o)'%3E%3Ccircle cx='128' cy='72' r='78' fill='none' stroke='%23f4f4f1' stroke-width='7'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600&display=swap">
+<style>
+  :root { --ink: #0b0b0c; --paper: #f4f4f1; --soft: #5d5d5a; --line: #e2e2dc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 500 17px/1.65 Manrope, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 680px; margin: 0 auto; padding: 56px 20px 96px; }
+  .top { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 18px; margin-bottom: 64px; }
+  .top svg { width: 26px; height: 26px; }
+  h1 { font-weight: 600; font-size: 40px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .date { color: var(--soft); margin: 0 0 40px; }
+  h2 { font-weight: 600; font-size: 19px; margin: 36px 0 8px; }
+  p { margin: 0 0 12px; }
+  a { color: var(--ink); }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--soft); font-size: 15px; display: flex; gap: 20px; }
+</style>
+</head><body><main>
+<a class="top" href="/"><svg viewBox="0 0 200 200" aria-hidden="true"><defs><clipPath id="o"><circle cx="100" cy="100" r="78"/></clipPath></defs><circle cx="100" cy="100" r="78" fill="#0b0b0c"/><g clip-path="url(#o)"><circle cx="128" cy="72" r="78" fill="none" stroke="#f4f4f1" stroke-width="7"/></g></svg>wagbi</a>
+<h1>Privacy</h1>
+<p class="date">Last updated November 2, 2026</p>
+
+<h2>What you type and the coins you make</h2>
+<p>When you make a coin, wagbi stores what you typed, the pictures you attached, the links you shared, wagbi's replies and the coin it made (the name, ticker, bio, logo, banner and website) so you can come back to it and keep changing it. Every coin made on wagbi is public, and so is what was stored with it: it shows on the coins tab and has its own page and website.</p>
+
+<h2>Your chats</h2>
+<p>Your chat history is kept in your browser. If you sign in with Google, it is also kept on our servers under your account so it follows you to other devices. "Clear all chat history" in settings deletes it from this device and from your account.</p>
+
+<h2>Signing in with Google</h2>
+<p>When you sign in, Google tells us your name, email address and profile picture. We use them only to show who is signed in and to keep your chats. Your account is stored under a one-way hash, not under your Google ID.</p>
+
+<h2>Voice input</h2>
+<p>When you use the microphone, the recording is sent to a transcription service (OpenAI or ElevenLabs) to turn it into text for the prompt box. We don't keep the recording.</p>
+
+<h2>Launching a coin</h2>
+<p>To launch, you send SOL to a one-time deposit address. Its key is kept encrypted until the launch is done and any leftover SOL is sent back. The coin's address, its payout wallets and its fee split are public, on the blockchain and on the coin's page.</p>
+
+<h2>Stopping abuse</h2>
+<p>To apply rate limits, we keep a one-way hash of your IP address for about an hour.</p>
+
+<h2>Services that handle your data</h2>
+<p>Anthropic (Claude) writes and draws the coins, and image generation services may help with the art. Vercel hosts the site and stores its data. Google handles sign-in. OpenAI or ElevenLabs transcribe voice. Solana RPC providers send launch transactions to the network.</p>
+
+<h2>What we don't do</h2>
+<p>We don't sell your data, and the site has no ad trackers.</p>
+
+<h2>Questions</h2>
+<p>Message <a href="https://x.com/wagbifun">@wagbifun</a> on X.</p>
+
+<footer><a href="/">wagbi.fun</a><a href="/terms">Terms</a></footer>
+</main></body></html>

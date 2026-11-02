@@ -11,6 +11,8 @@ import { Connection } from '@solana/web3.js';
 import { DepositStore, parseMasterKey, publicChecker } from 'printer-engine/launch';
 import { BlobObjectStore } from 'printer-engine/blob';
 import { hasStore, putMeta, readKit, readLaunch, writeLaunch } from '../store.js';
+import { purgeSite } from '../sites.js';
+import { siteForLaunch } from '../siteindex.js';
 import { createLaunchService } from './service.js';
 import { LaunchCustody } from './custody.js';
 import { GUARDS } from './launchpads.js';
@@ -43,7 +45,12 @@ export function launchService(env = process.env) {
     getKit: readKit,
     putMeta,
     readCoin: (kitId) => readLaunch(kitId, settings.cluster),
-    writeCoin: writeLaunch,
+    // a live coin's website changes at once (it shows the contract, the chart and the buy link)
+    writeCoin: async (rec) => {
+      await writeLaunch(rec);
+      await purgeSite(rec.kitId);
+    },
+    siteFor: siteForLaunch,
     settings,
     // devnet test deployments sit behind Vercel's login, so only the metadata and the picture are read back
     checkPublic: settings.cluster === 'mainnet' ? check : (i, signal) => check({ ...i, website: i.imageUrl }, signal),

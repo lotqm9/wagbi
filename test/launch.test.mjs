@@ -212,6 +212,7 @@ function setup(o = {}) {
     writeCoin: async (r) => void (coins.has(r.kitId) || coins.set(r.kitId, r)),
     settings: o.settings ?? settings(),
     checkPublic: null,
+    siteFor: o.siteFor ?? null,
     now, log: (e) => void logs.push(e), runMs: 30_000, timing: { resendMs: 5, pollMs: 2, settleMs: 2, marginMs: 200 },
   });
   return { chain, svc, store, objects, coins, meta, logs, later: (ms) => void (offset += ms) };
@@ -558,5 +559,27 @@ describe('versions: a coin is its conversation', () => {
     assert.equal(coin.name, 'blue toad');
     await assert.rejects(t.svc.create(body({ kitId: KIT2 })), /already launched/);
     delete KITS[V2];
+  });
+});
+
+describe("the coin's website", () => {
+  it("goes in the coin's details as its website, and stays on its launch record and links", async () => {
+    const asked = [];
+    const t = setup({ siteFor: async (x) => (asked.push(x), `https://wagbi.fun/${x.name.replace(/[^a-z0-9]/g, '')}`) });
+    const v = await t.svc.create(body({ name: 'deduc toad' }));
+    assert.deepEqual([asked[0].coinId, asked[0].kit.id, asked[0].name, asked[0].ticker], [KIT, KIT, 'deduc toad', 'TOAD']);
+    assert.equal(JSON.parse([...t.meta.values()][0]).website, 'https://wagbi.fun/deductoad');
+    t.chain.fund(v.address, v.amounts.totalLamports);
+    const end = await poll(t, v.id);
+    assert.equal(end.phase, 'live');
+    assert.equal(end.launch.links.coin, 'https://wagbi.fun/deductoad');
+    assert.equal(t.coins.get(KIT).website, 'https://wagbi.fun/deductoad');
+    assert.equal((await t.svc.coin(KIT)).links.coin, 'https://wagbi.fun/deductoad');
+  });
+  it("falls back to the coin's page when its site can't be made (the launch never waits on it)", async () => {
+    const t = setup({ siteFor: async () => { throw new Error('store down'); } });
+    await t.svc.create(body());
+    assert.equal(JSON.parse([...t.meta.values()][0]).website, `https://wagbi.fun/k/${KIT}`);
+    assert.ok(t.logs.some((e) => e.evt === 'launch.site_failed'));
   });
 });

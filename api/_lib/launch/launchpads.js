@@ -13,6 +13,10 @@ import { pumpfunUsdc } from './adapters/pumpfunUsdc.js';
 import { letsbonk, raydiumLaunchlab } from './adapters/launchlab.js';
 import { meteoraDbc } from './adapters/meteoraDbc.js';
 import { bags } from './adapters/bags.js';
+import { BRAND } from '../brand.js';
+import { BAGS_FEE_NOTE, chartOf, factsOf } from './facts.js';
+
+export { chartOf, factsOf };
 
 export const CHAINS = [
   { id: 'solana', name: 'Solana', status: 'live' },
@@ -20,44 +24,51 @@ export const CHAINS = [
   { id: 'bnb', name: 'BNB Chain', status: 'soon' },
 ];
 
+// Fee facts per launchpad (facts.js) ride along in the view: the picker's cards and the fees step show them.
 export const LAUNCHPADS = [
   {
     id: 'pumpfun', chain: 'solana', name: 'pump.fun', feeModel: 'split',
     blurb: 'the bonding curve everyone watches. creator fees split across your wallets, locked on chain.',
-    feeNote: null,
+    feeDetail: null,
     currencies: [
       { id: 'SOL', adapter: pumpfun },
-      { id: 'USDC', adapter: pumpfunUsdc, flag: 'WAGBI_LAUNCH_PUMPFUN_USDC', proven: true, note: "no first buy on a USDC pair: pump.fun's USDC pairs are bought with USDC, and your deposit is SOL. creator fees come in USDC." },
+      {
+        id: 'USDC', adapter: pumpfunUsdc, flag: 'WAGBI_LAUNCH_PUMPFUN_USDC', proven: true,
+        note: "no first buy on a USDC pair: pump.fun's USDC pairs are bought with USDC, and your deposit is SOL. creator fees come in USDC.",
+      },
     ],
   },
   {
     id: 'raydium-launchlab', chain: 'solana', name: 'Raydium LaunchLab', feeModel: 'creator',
     blurb: "raydium's launchpad. graduates to a raydium CPMM pool.",
-    feeNote: "you keep all the creator fees on Raydium LaunchLab. your wallet is the coin's creator from the first trade, and you claim them on raydium.io. the rate is raydium's platform rate (0.05% of every trade on mainnet, read 2026-11-02).",
+    feeDetail: "your wallet is the coin's creator from the first trade, and you claim the fees on raydium.io. the rate is raydium's platform rate: 0.05% of every trade on mainnet (read 2026-11-02).",
     currencies: [{ id: 'SOL', adapter: raydiumLaunchlab, flag: 'WAGBI_LAUNCH_RAYDIUM_LAUNCHLAB', proven: true }],
   },
   {
     id: 'letsbonk', chain: 'solana', name: 'LetsBonk', feeModel: 'creator',
     blurb: "bonk.fun's standard coin, on raydium launchlab.",
-    feeNote: 'you keep all the creator fees on LetsBonk, but bonk.fun pays creators none: 0% on the curve, and after graduation the pool\'s creator fee goes to bonk.fun\'s own wallet (its platform config, read 2026-11-02).',
+    feeDetail: "but bonk.fun pays creators none: 0% on the curve, and after graduation the pool's creator fee goes to bonk.fun's own wallet (its platform config, read 2026-11-02).",
     currencies: [{ id: 'SOL', adapter: letsbonk, flag: 'WAGBI_LAUNCH_LETSBONK', proven: false, why: 'mainnet only (bonk.fun has no devnet), so it stays off until it is switched on.' }],
   },
   {
     id: 'meteora-dbc', chain: 'solana', name: 'Meteora DBC', feeModel: 'creator',
     blurb: 'a dynamic bonding curve with your own market caps and fees. graduates to a locked Meteora pool.',
-    feeNote: 'you keep all the creator fees on Meteora DBC: 80% of every trading fee (Meteora keeps 20%), and the locked liquidity\'s fees after graduation. you claim them on meteora.ag.',
+    feeDetail: "that's 80% of every trading fee (Meteora keeps 20%), and the locked liquidity's fees after graduation. you claim them on meteora.ag.",
     currencies: [{ id: 'SOL', adapter: meteoraDbc, flag: 'WAGBI_LAUNCH_METEORA_DBC', proven: true }],
   },
   {
     id: 'bags', chain: 'solana', name: 'Bags', feeModel: 'creator',
     blurb: 'fee sharing built in, launched through the Bags API.',
-    feeNote: 'you keep all the creator fees on Bags (the claimers pool). Bags keeps its own 1% of every trade.',
+    // LAUNCH-SPEC.md "Bags", open problem: the fee-share config's payer (the deposit) automatically gets 25% of the
+    // claimers' pool (Deployer Fees, since September 2026), so "all yours" isn't true on Bags until that is solved.
+    feeDetail: "the claimers' pool goes to your wallet, except the 25% Bags gives the fee setup's payer (here, the deposit). Bags keeps its own 1% of every trade.",
+    feeNote: BAGS_FEE_NOTE,
     currencies: [{ id: 'SOL', adapter: bags, flag: 'WAGBI_LAUNCH_BAGS', proven: false, why: 'needs a Bags API key and has no devnet, so it stays off until it is switched on.' }],
   },
   {
     id: 'moonit', chain: 'solana', name: 'Moonit', feeModel: 'creator',
     blurb: 'formerly moonshot.',
-    feeNote: null,
+    feeDetail: null,
     currencies: [{ id: 'SOL', adapter: null, why: "its own server co-signs every launch, the first-buy coins can't go to your wallet, and creators earn nothing on the curve (checked 2026-11-02)." }],
   },
 ];
@@ -94,11 +105,16 @@ export function pickerView(s) {
         return {
           id: cur.id, status: st.status, why: st.why, note: cur.note ?? null,
           firstBuy: !!ad?.firstBuy, maxWallets: ad?.feeModel === 'split' ? ad.maxWallets : null, options: ad?.options ?? [],
+          facts: factsOf(pad.id, cur.id),
         };
       });
       const live = currencies.some((c) => c.status === 'live');
       return {
-        id: pad.id, chain: pad.chain, name: pad.name, blurb: pad.blurb, feeModel: pad.feeModel, feeNote: pad.feeNote,
+        id: pad.id, chain: pad.chain, name: pad.name, blurb: pad.blurb, feeModel: pad.feeModel,
+        // the plain words the launch screen shows (Laith, 2026-11-02): "you keep all the creator fees on <platform>"
+        feeNote: pad.feeNote ?? (pad.feeModel === 'creator' && pad.currencies.some((c) => c.adapter) ? `you keep all the creator fees on ${pad.name}. ${BRAND.name} takes nothing.` : null),
+        feeDetail: pad.feeDetail ?? null,
+        facts: factsOf(pad.id, null),
         status: live ? 'live' : 'soon', why: live ? null : currencies[0]?.why ?? null,
         maxWallets: currencies.find((c) => c.maxWallets)?.maxWallets ?? null,
         currencies,

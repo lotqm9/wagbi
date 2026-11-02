@@ -64,7 +64,7 @@ export async function POST(req) {
   const s = sessionOf(req, secret);
   if (!s) return fail('signin', 401);
   if (limited(`chatsave:${ip}`, 60, 60_000)) return fail('slow', 429);
-  const body = await readJson(req, 400_000);
+  const body = await readJson(req, 3_200_000);
   if (!body || !Array.isArray(body.chats)) return fail('empty');
   try {
     const key = accountKey(secret, s.sub);

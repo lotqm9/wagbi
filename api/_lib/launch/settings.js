@@ -18,7 +18,7 @@ import { PublicKey } from '@solana/web3.js';
 import { BRAND } from '../brand.js';
 
 export const MAINNET_ALT = 'Hyif6eWb8x88RVrvjPfabsgRYnwkVnyByEXTVTXbUcyP';
-const PUBLIC_RPC = { mainnet: 'https://solana-rpc.publicnode.com', devnet: 'https://api.devnet.solana.com' };
+export const PUBLIC_RPC = { mainnet: 'https://solana-rpc.publicnode.com', devnet: 'https://api.devnet.solana.com' };
 
 const num = (v, lo, hi, dflt) => {
   const n = Number(v);

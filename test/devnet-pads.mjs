@@ -237,6 +237,16 @@ async function launch(pad) {
     await sleep(2000);
   }
   view = (await svc.status(v.id)).view;
+  // read the chain back: the deposit is empty, the first buy's coins are in the payout wallet
+  const mintNow = view.launch?.mint;
+  const chain = mintNow
+    ? {
+        depositLeftLamports: await rpc.getBalance(new PublicKey(v.address)),
+        payoutCoins: body.firstBuySol ? (await rpc.getTokenAccountBalance(new PublicKey(ataOf(mintNow, payout))).catch(() => ({ value: { uiAmountString: 'none' } }))).value.uiAmountString : 'no first buy',
+        payoutLamports: await rpc.getBalance(new PublicKey(payout)),
+      }
+    : null;
+  say('CHAIN', JSON.stringify(chain));
   say('RESULT', JSON.stringify({ pad, phase: view.phase, problem: view.problem, mint: view.launch?.mint, createTx: view.launch?.links.createTx, splitTx: view.launch?.links.splitTx, returns: view.returns, coin: coins.get(KIT) && { feeModel: coins.get(KIT).feeModel, split: coins.get(KIT).split, setup: coins.get(KIT).setup } }));
   void simulateTx;
 }

@@ -9,8 +9,10 @@
 // One that fails (no credit, down) hands over to the next. WAGBI_TRANSCRIBE=openai or =elevenlabs picks one only.
 // Capped like generation: at most 2 MB (well under two minutes of speech), 20 clips per IP per hour, and each clip held
 // against the same daily $ cap (WAGBI_DAILY_USD) as kits.
-import { clientIp, fail, limited, ok } from './_lib/http.js';
-import { hasStore, hold, newId, settle, spentToday } from './_lib/store.js';
+// Voice has its own slice of the day (WAGBI_VOICE_USD, default a tenth of the cap): clips can never use up what the
+// coins need, however many come in.
+import { clientIp, fail, limited, ok, sameOrigin } from './_lib/http.js';
+import { capCheck, hasStore, hold, newId, settle, spendToday } from './_lib/store.js';
 
 const MAX_BYTES = 2_000_000;
 const USD_PER_MIN = { openai: 0.0045, elevenlabs: 0.01 };
@@ -19,6 +21,10 @@ const TYPES = { 'audio/webm': 'webm', 'audio/mp4': 'mp4', 'audio/mpeg': 'mp3', '
 const cap = () => {
   const v = Number(process.env.WAGBI_DAILY_USD);
   return Number.isFinite(v) && v >= 0 ? v : 5;
+};
+const voiceCap = () => {
+  const v = Number(process.env.WAGBI_VOICE_USD);
+  return Number.isFinite(v) && v >= 0 ? v : cap() / 10;
 };
 const log = (o) => console.log(JSON.stringify({ at: 'transcribe', ...o }));
 
@@ -56,6 +62,7 @@ function providers() {
 const oneLine = (t) => String(t).split(/\s+/).join(' ').trim().slice(0, 300);
 
 export async function POST(req) {
+  if (!sameOrigin(req)) return fail('cross_site', 403);
   const list = providers();
   if (!list.length || !hasStore()) return fail('off', 503);
   const type = (req.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
@@ -71,7 +78,10 @@ export async function POST(req) {
   let day;
   const id = 't' + newId().slice(1);
   try {
-    if ((await spentToday()) + WORST_USD > cap()) return fail('resting', 429);
+    const spend = await spendToday();
+    const room = capCheck(spend, WORST_USD, cap());
+    if (room !== 'ok') return fail(room, 429);
+    if (spend.voice + WORST_USD > voiceCap()) return fail('voice_rest', 429);
     day = await hold(id, WORST_USD);
   } catch (e) {
     log({ storage: String(e?.message ?? e).slice(0, 160) });

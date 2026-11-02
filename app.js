@@ -1,10 +1,8 @@
-// wagbi front end. a submit asks /api/make for a real coin and shows it as it streams in.
-// each coin is its own chat at #/coin/<id>; history lives in this viewer's localStorage when it can.
-// the four examples stay examples. history from the demo days (records with an example id) still opens.
+// wagbi front end: a chat with wagbi's assistant. Each chat lives at /coin/<id>; the history is kept in this viewer's
+// localStorage and follows a signed-in person to every device. A message streams from /api/make: the reply as it is
+// written, the thinking and every step of the work, and when it makes a coin, two designs to pick from.
 (() => {
   const B = window.BRAND || { name: 'wagbi', domain: 'wagbi.fun' };
-  const KITS = window.WAGBI_EXAMPLES || [];
-  const BY_ID = Object.fromEntries(KITS.map((k) => [k.id, k]));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const canHover = matchMedia('(hover: hover)').matches;
   const $ = (id) => document.getElementById(id);
@@ -16,66 +14,61 @@
     if (text != null) n.textContent = text;
     return n;
   };
+  const svgIcon = (d, size = 16) => {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 20 20');
+    s.setAttribute('width', size);
+    s.setAttribute('height', size);
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = d;
+    return s;
+  };
+  const ICON = {
+    chev: '<path d="m7.5 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+    dots: '<circle cx="4.5" cy="10" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="15.5" cy="10" r="1.5" fill="currentColor"/>',
+    pen: '<path d="M12.6 4.4 15.6 7.4 7.6 15.4H4.6V12.4Z M11 6l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+    bin: '<path d="M4.5 6h11M8 6V4.5h4V6M6 6l.8 10h6.4L14 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+    check: '<path d="m5 10.4 3.2 3.1L15 6.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    link: '<path d="M8.6 11.4a3 3 0 0 0 4.2 0l2.4-2.4a3 3 0 0 0-4.2-4.2l-1 1M11.4 8.6a3 3 0 0 0-4.2 0L4.8 11a3 3 0 0 0 4.2 4.2l1-1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    x: '<path d="M6 6l8 8M14 6l-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  };
 
   const IDEAS = [
     'a raccoon who runs a hedge fund',
+    'paste a tweet and say: make it a coin',
     'a dog that only buys the top',
-    'a cat that is always late for the bus',
+    'drop a picture of your cat',
     'the moon, but it is tired',
-    'a snail that day trades',
-    'a ghost who haunts your portfolio',
+    'pepe running a bank',
   ];
-  // what the engine streams, in order: [doing, done]
-  const STEPS = [
-    ['reading it', 'read'],
-    ['naming it', 'named'],
-    ['drawing the logo', 'logo'],
-    ['painting the banner', 'banner'],
-    ['giving it a second look', 'second look'],
-  ];
-  const STEP_AT = { read: 0, name: 1, logo: 2, banner: 3, look: 4 };
-  const MAX_LEN = 140;
+  const MAX_LEN = 600;
   // said here when the server could not say it
   const SAY = {
     offline: `could not reach ${B.name}. check your connection and try again.`,
     jam: 'something went wrong on that one. try it again.',
-    lost: 'this one did not finish. try it again.',
+    lost: 'this reply did not finish. try it again.',
   };
-  // after these the sentence goes back in the box, ready to send again
-  const RETRY = new Set(['offline', 'jam', 'lost', 'slow', 'off', 'too_long', 'empty']);
+  // after these the message goes back in the box, ready to send again
+  const RETRY = new Set(['offline', 'jam', 'lost', 'slow', 'off', 'too_long', 'empty', 'resting', 'busy', 'no_art']);
 
-  // ---------- svg helpers ----------
+  // ---------- the mark ----------
   let uid = 0;
-  const uniq = (svg) => {
-    const n = ++uid;
-    return svg
-      .replace(/\sid="([^"]+)"/g, (m, id) => ` id="${id}-${n}"`)
-      .replace(/(href="#|url\(#)([^")]+)/g, (m, p, id) => `${p}${id}-${n}`);
-  };
   function mark() {
     if (B.markImg) return `<img class="mark" src="${B.markImg}" alt="" aria-hidden="true">`;
     const id = 'mk' + (++uid);
     return `<svg class="mark" viewBox="0 0 200 200" aria-hidden="true"><defs><clipPath id="${id}"><circle cx="100" cy="100" r="78"/></clipPath></defs><circle cx="100" cy="100" r="78" fill="#0b0b0c"/><g clip-path="url(#${id})"><g class="arc"><circle cx="128" cy="72" r="78" fill="none" stroke="#f4f4f1" stroke-width="7"/></g></g></svg>`;
   }
-  const img = (src) => {
+  const img = (src, alt = '') => {
     const i = new Image();
-    i.alt = '';
+    i.alt = alt;
     i.decoding = 'async';
     i.src = src;
     return i;
   };
-  // small logos in the sidebar are images, so a long history stays light
-  const imgCache = {};
-  const exampleImg = (kit) => {
-    if (!imgCache[kit.id]) {
-      let s = kit.logo;
-      if (!/xmlns=/.test(s)) s = s.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
-      imgCache[kit.id] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
-    }
-    return img(imgCache[kit.id]);
-  };
+  // a link from the stream or a stored chat (a page it read, a search result, a post): http(s) only, never script
+  const safeHref = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u) ? u : null);
 
-  // the arc of light turns while a coin is being made, then eases to rest
+  // the arc of light turns while wagbi works, then eases to rest
   function spin(svg) {
     const arc = svg && svg.querySelector('.arc');
     if (reduce || !arc || !arc.animate) return { stop() {} };
@@ -93,35 +86,42 @@
     };
   }
 
-  // banner fonts, loaded once
-  if (window.WAGBI_FONTS && window.WAGBI_FONTS.length) {
-    const l = document.createElement('link');
-    l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?' + window.WAGBI_FONTS.map((f) => 'family=' + f).join('&') + '&display=swap';
-    document.head.appendChild(l);
-  }
-
   // ---------- history: per viewer, never required ----------
-  // a real coin: { id, sentence, t, kit (its id on the server), name, ticker, bio, logo, banner (image urls) }
-  // a demo era coin: { id, sentence, t, example, name, ticker }
+  // a chat: { id, sentence (its first message), t (last message), u (last change), title?, titleAt?, root, kit (the
+  //   design it is on), name, ticker, bio, logo, banner, thumb, turns, pending? }
+  // a turn: { q, t, files?, links?, web?, a (the reply), made?: [design, design?], pick (0, 1 or null), v?, kind?, tr? }
+  // a design: { kit, root, name, ticker, bio, angle, logo, banner, thumb }
   const KEY = `${B.id || 'wagbi'}.coins.v1`;
   const MAX = 100;
   const KIT_ID = /^[A-Za-z0-9_-]{16}$/;
-  const PNG_URL = /^https:\/\/[a-z0-9.-]+\.blob\.vercel-storage\.com\/kits\/[A-Za-z0-9_-]{16}\/(logo|banner)\.png$/;
-  const jobs = {}; // coin id -> the make running in this tab
+  const PIC = /^https:\/\/[a-z0-9.-]+\.blob\.vercel-storage\.com\/(kits\/[A-Za-z0-9_-]{16}\/(logo\.png|banner\.(png|jpg)|thumb\.webp)|uploads\/[A-Za-z0-9_-]{16}\.jpg)$/;
+  const REF = /^https:\/\/[a-z0-9.-]+\.blob\.vercel-storage\.com\/refs\/[0-9a-f]{16,64}\.jpg$/;
+  const okPic = (u) => u == null || PIC.test(u);
+  const jobs = {}; // chat id -> the message running in this tab
+  const okDesign = (d) => d && KIT_ID.test(d.kit || '') && okPic(d.logo) && okPic(d.banner) && okPic(d.thumb);
+  // chats from before the two designs: their versions become turns of one design each
+  function migrate(c) {
+    if (!c || typeof c !== 'object') return c;
+    const old = Array.isArray(c.turns) ? c.turns : c.kit && c.logo ? [{ v: 1, kit: c.kit, ask: c.sentence, name: c.name, ticker: c.ticker, bio: c.bio, logo: c.logo, banner: c.banner }] : null;
+    if (!old || old.every((t) => t && 'q' in t)) return c;
+    c.turns = old.filter((t) => t && t.kit).map((t, i) => ({ q: t.ask || c.sentence, t: c.t, a: i === 0 ? 'here is your coin.' : 'here is the new version.', made: [{ kit: t.kit, root: c.turns && c.turns[0] ? c.turns[0].kit : c.kit, name: t.name, ticker: t.ticker, bio: t.bio, angle: '', logo: t.logo, banner: t.banner, thumb: null }], pick: 0, v: t.v || i + 1 }));
+    c.root = c.root || (c.turns[0] && c.turns[0].made[0].kit);
+    return c;
+  }
   const valid = (c) => {
     if (!c || typeof c.id !== 'string' || typeof c.sentence !== 'string' || typeof c.t !== 'number') return false;
-    if (c.example) return !!BY_ID[c.example];
-    if (c.logo != null && !PNG_URL.test(c.logo)) return false;
-    if (c.banner != null && !PNG_URL.test(c.banner)) return false;
-    return KIT_ID.test(c.kit || '') || !!jobs[c.id];
+    if (c.example) return false; // the demo days' examples are gone
+    if (!okPic(c.logo) || !okPic(c.banner) || !okPic(c.thumb)) return false;
+    if (c.kit != null && !KIT_ID.test(c.kit)) return false;
+    if (!Array.isArray(c.turns)) return !!jobs[c.id] || !!c.pending;
+    return c.turns.every((t) => t && typeof t.q === 'string' && (!t.made || (Array.isArray(t.made) && t.made.every(okDesign))));
   };
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return [];
       const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr.filter(valid).sort((a, b) => b.t - a.t).slice(0, MAX) : [];
+      return Array.isArray(arr) ? arr.map(migrate).filter(valid).sort((a, b) => b.t - a.t).slice(0, MAX) : [];
     } catch (e) {
       return [];
     }
@@ -148,7 +148,7 @@
   function patch(id, fields) {
     const c = find(id);
     if (c) {
-      Object.assign(c, fields);
+      Object.assign(c, fields, { u: Date.now() });
       save();
     }
   }
@@ -161,8 +161,14 @@
     deletedIds[id] = Date.now();
     saveDeleted();
     forget(id);
-    if (parse().kind === 'coin' && parse().id === id) location.hash = '#/';
+    if (parse().kind === 'coin' && parse().id === id) go('/');
     else renderSide();
+  }
+  function renameChat(id, title) {
+    const t = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    patch(id, { title: t || null, titleAt: Date.now() });
+    renderSide();
+    if (parse().kind === 'coin' && parse().id === id) document.title = `${titleOf(find(id))} · ${B.name}`;
   }
   function clearAll() {
     const at = Date.now();
@@ -173,9 +179,10 @@
     try { localStorage.removeItem(KEY); } catch (e) { /* memory only */ }
     // signed in: the account's copy goes too (each chat is marked deleted there, so no device brings it back)
     if (auth.user) fetch('/api/chats', { method: 'DELETE' }).then(() => { deletedIds = {}; saveDeleted(); }).catch(() => {});
-    if (parse().kind === 'coin') location.hash = '#/';
+    if (parse().kind === 'coin') go('/');
     else renderSide();
   }
+  const titleOf = (c) => (c && (c.title || c.name || c.sentence)) || B.name;
 
   function ago(t) {
     const s = Math.max(0, (Date.now() - t) / 1000);
@@ -185,11 +192,13 @@
     if (s < 86400 * 7) return Math.floor(s / 86400) + 'd';
     return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toLowerCase();
   }
+  const secs = (ms) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`);
 
   // ---------- elements ----------
   const hero = $('hero');
   const thread = $('thread');
-  const made = $('made');
+  // the examples grid is gone; the coins tab and the coin page still hide it on their way in
+  const made = $('made') || { hidden: true };
   const composer = $('composer');
   const field = $('field');
   const ta = $('prompt');
@@ -197,32 +206,18 @@
   const list = $('list');
   const side = $('side');
   const menu = $('menu');
+  const sendBtn = $('send');
+  const plus = $('plus');
+  const plusMenu = $('plusMenu');
+  const atts = $('atts');
+  const fileInput = $('fileInput');
+  const webPill = $('webPill');
+  const webToggle = $('webToggle');
 
   $('heroMark').innerHTML = mark();
   $('brandMark').outerHTML = mark();
 
-  // chips: the example sentences, each makes a coin
-  KITS.slice(0, 3).forEach((k) => {
-    const b = el('button', 'chip', k.sentence);
-    b.type = 'button';
-    b.addEventListener('click', () => submit(k.sentence));
-    $('chips').appendChild(b);
-  });
-
-  // made with wagbi grid: each opens that example's chat
-  KITS.forEach((k) => {
-    const c = el('a', 'card');
-    c.href = '#/example/' + k.id;
-    c.setAttribute('aria-label', `${k.name}, $${k.ticker}, made from: ${k.sentence}`);
-    const logo = el('div', 'card-logo');
-    logo.innerHTML = uniq(k.logo);
-    const id = el('div', 'card-id');
-    id.append(el('b', '', k.name), el('span', '', '$' + k.ticker));
-    c.append(logo, id, el('p', 'card-q', k.sentence));
-    $('grid').appendChild(c);
-  });
-
-  // ---------- the prompt ----------
+  // ---------- the prompt box ----------
   let idea = 0;
   let holdUntil = 0;
   ph.textContent = IDEAS[0];
@@ -240,39 +235,227 @@
       }, 480);
     }, 3400);
   }
-  function holdPh(text) {
+  function holdPh(text, forever) {
     ph.classList.remove('out', 'pre');
     ph.textContent = text;
-    holdUntil = Date.now() + 6000;
+    holdUntil = forever ? Infinity : Date.now() + 6000;
   }
+  const uploading = () => draft.some((a) => a.busy);
   function fit() {
     ta.style.height = 'auto';
-    ta.style.height = ta.scrollHeight + 'px';
+    ta.style.height = Math.min(ta.scrollHeight, 240) + 'px';
     field.classList.toggle('has', ta.value.length > 0);
+    sendBtn.disabled = !ta.value.trim() || uploading() || document.body.dataset.state === 'making';
   }
-  ta.addEventListener('input', () => {
-    if (/\n/.test(ta.value)) ta.value = ta.value.replace(/\s*\n\s*/g, ' ');
-    fit();
-  });
+  ta.addEventListener('input', fit);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       submit(ta.value);
     }
   });
-  ta.addEventListener('beforeinput', (e) => {
-    if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
-      e.preventDefault();
-      submit(ta.value);
-    }
-  });
   composer.addEventListener('submit', (e) => { e.preventDefault(); submit(ta.value); });
+  field.addEventListener('click', (e) => { if (e.target === field || e.target.closest('.ta')) ta.focus(); });
   addEventListener('resize', fit);
   const focusPrompt = () => { if (canHover) ta.focus({ preventScroll: true }); };
 
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // ---------- the "+": pictures, links, web search ----------
+  // draft: what goes with the next message. { kind: 'img', id, local, url, busy, bad } | { kind: 'link', id, url }
+  let draft = [];
+  const MAX_PICS = 4;
+  const MAX_LINKS = 3;
+  const WEB_KEY = KEY + '.web';
+  let webOn = (() => { try { return localStorage.getItem(WEB_KEY) !== '0'; } catch (e) { return true; } })();
+  function setWeb(on) {
+    webOn = on;
+    webToggle.checked = on;
+    $('pmWeb').setAttribute('aria-checked', String(on));
+    webPill.setAttribute('aria-pressed', String(on));
+    webPill.title = on ? 'web search is on: wagbi looks things up when it helps' : 'web search is off';
+    try { localStorage.setItem(WEB_KEY, on ? '1' : '0'); } catch (e) { /* memory only */ }
+  }
+  setWeb(webOn);
+  webPill.addEventListener('click', (e) => { e.stopPropagation(); setWeb(!webOn); });
+  webToggle.addEventListener('change', () => setWeb(webToggle.checked));
+  $('pmWeb').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWeb(!webOn); } });
 
-  // ---------- making a coin: one job per coin, alive while this tab is ----------
+  function openPlus(on) {
+    plusMenu.hidden = !on;
+    plus.setAttribute('aria-expanded', String(on));
+    if (!on) $('pmLinkBox').hidden = true;
+  }
+  plus.addEventListener('click', (e) => { e.stopPropagation(); openPlus(plusMenu.hidden); });
+  plusMenu.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { if (!plusMenu.hidden) openPlus(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !plusMenu.hidden) { openPlus(false); plus.focus(); } });
+  $('pmPhotos').addEventListener('click', () => { openPlus(false); fileInput.click(); });
+  $('pmLink').addEventListener('click', () => {
+    const box = $('pmLinkBox');
+    box.hidden = !box.hidden;
+    if (!box.hidden) $('pmLinkInput').focus();
+  });
+  const addLinkFromBox = () => {
+    const v = $('pmLinkInput').value.trim();
+    if (!v) return;
+    if (addLink(v)) {
+      $('pmLinkInput').value = '';
+      openPlus(false);
+      ta.focus();
+      if (!ta.value.trim()) {
+        ta.value = /(^|\.)(x|twitter)\.com\//i.test(v) ? 'turn this post into a coin' : 'make a coin from this';
+        fit();
+      }
+    } else {
+      $('pmLinkInput').setCustomValidity('paste a full link, starting with https://');
+      $('pmLinkInput').reportValidity();
+      setTimeout(() => $('pmLinkInput').setCustomValidity(''), 2000);
+    }
+  };
+  $('pmLinkAdd').addEventListener('click', addLinkFromBox);
+  $('pmLinkInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLinkFromBox(); } });
+  fileInput.addEventListener('change', () => {
+    addFiles([...fileInput.files]);
+    fileInput.value = '';
+  });
+  ta.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.files || [])].filter((f) => /^image\//.test(f.type));
+    if (files.length) {
+      e.preventDefault();
+      addFiles(files);
+    }
+  });
+  field.addEventListener('dragover', (e) => {
+    if ([...(e.dataTransfer?.items || [])].some((i) => i.kind === 'file')) {
+      e.preventDefault();
+      field.classList.add('drop');
+    }
+  });
+  field.addEventListener('dragleave', (e) => { if (!field.contains(e.relatedTarget)) field.classList.remove('drop'); });
+  field.addEventListener('drop', (e) => {
+    field.classList.remove('drop');
+    const files = [...(e.dataTransfer?.files || [])].filter((f) => /^image\//.test(f.type));
+    if (!files.length) return;
+    e.preventDefault();
+    addFiles(files);
+  });
+
+  const shortUrl = (u) => {
+    try {
+      const x = new URL(u);
+      return (x.hostname.replace(/^www\./, '') + x.pathname).replace(/\/$/, '').slice(0, 48);
+    } catch (e) {
+      return u.slice(0, 48);
+    }
+  };
+  const isPostLink = (u) => /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d+/i.test(u);
+  function addLink(raw) {
+    let u;
+    try {
+      u = new URL(raw.trim());
+    } catch (e) {
+      return false;
+    }
+    if (!/^https?:$/.test(u.protocol)) return false;
+    if (draft.filter((a) => a.kind === 'link').length >= MAX_LINKS) return holdPh(`${MAX_LINKS} links at most.`), true;
+    if (!draft.some((a) => a.kind === 'link' && a.url === u.href)) draft.push({ kind: 'link', id: newId(), url: u.href });
+    drawDraft();
+    return true;
+  }
+  function addFiles(files) {
+    for (const f of files) {
+      if (draft.filter((a) => a.kind === 'img').length >= MAX_PICS) { holdPh(`${MAX_PICS} pictures at most.`); break; }
+      if (!/^image\//.test(f.type)) { holdPh('png, jpg, webp or gif pictures only.'); continue; }
+      if (f.size > 40_000_000) { holdPh('that picture is too big. try a smaller one.'); continue; }
+      const a = { kind: 'img', id: newId(), local: URL.createObjectURL(f), url: null, busy: true, bad: false };
+      draft.push(a);
+      upload(a, f);
+    }
+    drawDraft();
+  }
+  // The server takes a request body of 4.5 MB at most (Vercel's limit) and keeps a 1536 px copy, so a picture over
+  // 3.5 MB or 2048 px a side (most phone photos), or one the server doesn't read (heic, avif), is redrawn here first:
+  // a JPEG of at most 2048 px a side, on white. Answers what to send, or null when this browser can't read it.
+  const SEND_MAX = 3_500_000;
+  async function shrinkPicture(f) {
+    const native = /^image\/(png|jpeg|webp|gif)$/.test(f.type);
+    let bmp = null;
+    try {
+      if (typeof createImageBitmap !== 'function') return native && f.size <= SEND_MAX ? f : null;
+      bmp = await createImageBitmap(f);
+      const side = Math.max(bmp.width, bmp.height);
+      if (native && f.size <= SEND_MAX && side <= 2048) return f;
+      const k = Math.min(1, 2048 / side);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bmp.width * k));
+      c.height = Math.max(1, Math.round(bmp.height * k));
+      const g = c.getContext('2d');
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(bmp, 0, 0, c.width, c.height);
+      for (const q of [0.9, 0.8, 0.65]) {
+        const b = await new Promise((res) => c.toBlob(res, 'image/jpeg', q));
+        if (b && b.size <= SEND_MAX) return b;
+      }
+      return null;
+    } catch (e) {
+      return native && f.size <= SEND_MAX ? f : null;
+    } finally {
+      if (bmp && bmp.close) bmp.close();
+    }
+  }
+  async function upload(a, f) {
+    try {
+      const body = await shrinkPicture(f);
+      if (!body) throw new Error(/^image\/(png|jpeg|webp|gif)$/.test(f.type) ? 'that picture is too big. try a smaller one.' : 'png, jpg, webp or gif pictures only.');
+      const r = await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': body.type || f.type }, body });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok || !PIC.test(j.url || '')) throw new Error(j.error || (r.status === 413 ? 'that picture is too big. try a smaller one.' : "that picture didn't upload. try another one."));
+      a.url = j.url;
+    } catch (e) {
+      a.bad = true;
+      holdPh(e.message && e.message.length < 90 ? e.message : "that picture didn't upload. try another one.");
+    }
+    a.busy = false;
+    drawDraft();
+  }
+  function drawDraft() {
+    atts.textContent = '';
+    atts.hidden = !draft.length;
+    for (const a of draft) {
+      const chip = el('div', 'att' + (a.kind === 'img' ? ' img' : '') + (a.busy ? ' busy' : '') + (a.bad ? ' bad' : ''));
+      if (a.kind === 'img') {
+        chip.appendChild(img(a.local));
+        chip.title = a.bad ? "this picture didn't upload" : 'a picture for the art';
+      } else {
+        const ic = el('span', 'att-ic');
+        ic.appendChild(svgIcon(ICON.link, 18));
+        const t = el('span', 'att-t');
+        t.append(el('b', '', isPostLink(a.url) ? 'a post on x' : 'a link'), el('span', '', shortUrl(a.url)));
+        chip.append(ic, t);
+        chip.title = a.url;
+      }
+      const x = el('button', 'att-x');
+      x.type = 'button';
+      x.setAttribute('aria-label', 'remove');
+      x.appendChild(svgIcon(ICON.x, 12));
+      x.addEventListener('click', (e) => {
+        e.stopPropagation();
+        draft = draft.filter((d) => d !== a);
+        if (a.local) URL.revokeObjectURL(a.local);
+        drawDraft();
+      });
+      chip.appendChild(x);
+      atts.appendChild(chip);
+    }
+    fit();
+  }
+  function clearDraft() {
+    for (const a of draft) if (a.local) setTimeout(() => URL.revokeObjectURL(a.local), 60_000);
+    draft = [];
+    drawDraft();
+  }
+
+  // ---------- a message: one job per chat, alive while this tab is ----------
   const running = (id) => !!jobs[id] && !jobs[id].end;
   const busy = () => Object.keys(jobs).some(running);
 
@@ -283,54 +466,87 @@
     const j = await r.json();
     return j && j.kit;
   }
-
-  // a coin is a conversation: its finished versions, oldest first ({ v, kit, ask, name, ticker, bio, logo, banner }).
-  // the record's own kit/name/.../banner are the CURRENT version (the one the chat continues from and launch uses).
-  function turnsOf(rec) {
-    if (Array.isArray(rec.turns) && rec.turns.length) return rec.turns.filter((t) => KIT_ID.test(t.kit || '') && PNG_URL.test(t.logo || '') && PNG_URL.test(t.banner || ''));
-    if (rec.kit && rec.logo) return [{ v: 1, kit: rec.kit, ask: rec.sentence, name: rec.name, ticker: rec.ticker, bio: rec.bio, logo: rec.logo, banner: rec.banner }];
-    return [];
+  const designOf = (k) => ({ kit: k.id, root: k.root || k.id, name: k.name, ticker: k.ticker, bio: k.bio, angle: k.angle || k.style || '', logo: k.logo, banner: k.banner, thumb: k.thumb || null });
+  // the coin's website (wagbi.fun/<slug>) as a chat keeps it: { slug, path, url, rev, kit (the design it shows) },
+  // and the key that lets this chat change it (siteKeys: coin id -> key; only the chat that made a coin has one)
+  const SITE_PATH = /^\/[a-z0-9]{3,32}(?:-[a-z0-9]{1,4})?$/;
+  const okSite = (s) => !!(s && typeof s.path === 'string' && SITE_PATH.test(s.path) && typeof s.url === 'string' && /^https:\/\//.test(s.url));
+  const siteRec = (s, kit) => ({ slug: s.slug, path: s.path, url: s.url, rev: Number.isFinite(s.rev) ? s.rev : null, kit });
+  function siteFields(rec, kit, site, ids, keys) {
+    const out = {};
+    if (okSite(site)) out.site = siteRec(site, kit.id);
+    const root = kit.root || kit.id;
+    const i = Array.isArray(ids) ? ids.indexOf(root) : -1;
+    if (i >= 0 && Array.isArray(keys) && typeof keys[i] === 'string' && !(rec.siteKeys || {})[root]) out.siteKeys = { ...(rec.siteKeys || {}), [root]: keys[i] };
+    return out;
   }
-  const turnOf = (k, ask) => ({ v: k.version || 1, kit: k.id, ask, name: k.name, ticker: k.ticker, bio: k.bio, logo: k.logo, banner: k.banner });
+  // the page's record of the conversation, as /api/make takes it (the last 12 turns)
+  const historyOf = (rec) => (rec.turns || []).slice(-12).map((t) => ({ q: t.q, a: String(t.a || '').slice(0, 1500), made: (t.made || []).map((d) => ({ name: d.name, ticker: d.ticker, angle: d.angle || '' })), picked: Number.isInteger(t.pick) ? t.pick : null }));
+  // the design the chat is on (what a follow-up changes and what launches)
+  function currentOf(rec) {
+    for (let i = (rec.turns || []).length - 1; i >= 0; i--) {
+      const t = rec.turns[i];
+      const j = (t.made || []).findIndex((d) => d.kit === rec.kit);
+      if (j >= 0) return { turn: t, i, j, d: t.made[j] };
+    }
+    return null;
+  }
 
-  // poll: true skips the make and only looks for the stored kit (a reload, or a dropped connection)
-  // follow: { ask, from } makes the coin's next version from the kit `from` (a follow-up in its chat)
-  function startJob(rec, poll, follow) {
+  // a message's job: everything the stream says, for whichever view shows it
+  function startJob(rec, msg) {
     const id = rec.id;
-    const job = { sentence: follow ? follow.ask : rec.sentence, follow: !!follow, step: 'read', end: null, subs: new Set() };
+    const job = { q: msg.q, files: msg.files || [], links: msg.links || [], web: msg.web, t0: Date.now(), reply: '', thought: '', thinking: false, thoughtMs: null, steps: new Map(), designs: [], end: null, error: null, subs: new Set(), ids: null };
     jobs[id] = job;
     const tell = () => job.subs.forEach((fn) => fn());
     const finish = (end) => {
       job.end = end;
+      job.ms = Date.now() - job.t0;
       tell();
-      if (end === 'done') doneId = id;
       renderSide();
     };
     const failWith = (code, text) => {
       job.error = { code, text: text || SAY[code] || SAY.jam };
-      if (follow) patch(id, { pending: null }); // the coin stays as it was
-      else forget(id);
+      const c0 = find(id);
+      // (a newer message sent on this chat from another tab keeps its own pending)
+      if (c0 && c0.pending && (!Array.isArray(c0.pending.ids) || (job.ids && c0.pending.ids[0] === job.ids[0]))) patch(id, { pending: null });
+      // a chat that never got a reply is not a chat
+      const c = find(id);
+      if (c && (!c.turns || !c.turns.length) && !c.pending) forget(id);
       finish('error');
     };
     function on(ev) {
       if (job.end) return;
       if (ev.type === 'start') {
-        if (follow) patch(id, { pending: { ...follow, kit: ev.id } });
-        else patch(id, { kit: ev.id });
+        job.ids = ev.ids;
+        job.token = typeof ev.token === 'string' ? ev.token : null;
+        // a new coin's site key (one per id: the coin is whichever design comes out first); only this chat gets it
+        job.keys = Array.isArray(ev.keys) && ev.keys.every((k) => typeof k === 'string' && k.length < 64) ? ev.keys : null;
+        patch(id, { pending: { q: job.q, ids: ev.ids, t: job.t0, token: job.token, keys: job.keys || undefined } });
+      } else if (ev.type === 'reply') {
+        job.reply = ev.replace ? ev.text : job.reply + ev.text;
+      } else if (ev.type === 'think') {
+        job.thought += ev.text;
+        job.thinking = true;
       } else if (ev.type === 'step') {
-        job.step = ev.step;
-      } else if (ev.type === 'name') {
-        Object.assign(job, { name: ev.name, ticker: ev.ticker, bio: ev.bio });
-        if (!follow) patch(id, { name: ev.name, ticker: ev.ticker, bio: ev.bio });
-      } else if (ev.type === 'logo' || ev.type === 'banner') {
-        if (/^data:image\/png;base64,/.test(ev.png || '')) job[ev.type] = ev.png;
+        const s = job.steps.get(ev.id) || { t0: Date.now() };
+        Object.assign(s, ev);
+        if (ev.state !== 'run' && ev.ms == null) s.ms = Date.now() - s.t0;
+        job.steps.set(ev.id, s);
+      } else if (ev.type === 'design') {
+        job.designs[ev.i] = { ...(job.designs[ev.i] || {}), name: ev.name, ticker: ev.ticker, bio: ev.bio, angle: ev.angle };
+      } else if (ev.type === 'thought') {
+        job.thoughtMs = ev.ms;
+      } else if (ev.type === 'art') {
+        if (/^data:image\/(png|webp|jpeg);base64,/.test(ev.src || '') || PIC.test(ev.src || '')) job.designs[ev.i] = { ...(job.designs[ev.i] || {}), [ev.kind]: ev.src };
       } else if (ev.type === 'done') {
-        const k = ev.kit || {};
-        if (!PNG_URL.test(k.logo || '') || !PNG_URL.test(k.banner || '')) return failWith('jam');
-        Object.assign(job, { name: k.name, ticker: k.ticker, bio: k.bio, logo: job.logo || k.logo, banner: job.banner || k.banner });
-        const cur = find(id) || rec;
-        const turns = follow ? [...turnsOf(cur), turnOf(k, follow.ask)] : [turnOf(k, cur.sentence)];
-        patch(id, { kit: k.id, name: k.name, ticker: k.ticker, bio: k.bio, logo: k.logo, banner: k.banner, turns, pending: null });
+        const kits = (Array.isArray(ev.kits) ? ev.kits : []).filter((k) => KIT_ID.test(k.id || '') && PIC.test(k.logo || '') && PIC.test(k.banner || ''));
+        const turn = { q: job.q, t: job.t0, k: job.ids ? job.ids[0] : undefined, a: String(ev.reply || job.reply || '').slice(0, 4000), files: job.files.length ? job.files : undefined, links: job.links.length ? job.links : undefined, web: job.web, made: kits.length ? kits.map(designOf) : undefined, pick: null, v: kits.length ? kits[0].version : undefined, tr: traceOf(job) };
+        const c0 = find(id);
+        const mine = !c0 || !c0.pending || !job.ids || !Array.isArray(c0.pending.ids) || c0.pending.ids[0] === job.ids[0];
+        job.turnIndex = landTurn(id, rec, turn, kits, job.token, mine, (cur) => siteFields(cur, kits[0], ev.site, job.ids, job.keys));
+        // a change to the coin's website (no new designs): the card under the design shows it
+        const c1 = find(id);
+        if (!kits.length && okSite(ev.site) && c1 && c1.kit) patch(id, { site: siteRec(ev.site, c1.kit) });
         return finish('done');
       } else if (ev.type === 'error') {
         return failWith(ev.code, ev.error);
@@ -338,28 +554,13 @@
       tell();
     }
 
-    // the kit may still be finishing on the server: look for it for a while
-    async function look(tries) {
-      const cur = find(id) || rec;
-      const kitId = follow ? (cur.pending || follow).kit : cur.kit;
-      for (let n = 0; n < tries && !job.end; n++) {
-        if (n) await sleep(5000);
-        try {
-          const k = await fetchKit(kitId);
-          if (k) return on({ type: 'done', kit: k });
-        } catch (e) { /* try again */ }
-      }
-      if (!job.end) failWith('lost');
-    }
-
     (async () => {
-      if (poll) return look(Date.now() - ((follow && follow.t) || rec.t) < 6 * 60_000 ? 36 : 1);
       let res;
       try {
         res = await fetch('/api/make', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(follow ? { sentence: follow.ask, from: follow.from } : { sentence: rec.sentence }),
+          body: JSON.stringify({ message: msg.q, from: msg.from || undefined, token: msg.from ? msg.token : undefined, history: msg.history, files: job.files, links: job.links, web: msg.web, siteKey: msg.siteKey || undefined }),
         });
       } catch (e) {
         return failWith('offline');
@@ -390,16 +591,146 @@
         }
       } catch (e) { /* the connection dropped */ }
       if (job.end) return;
-      if (follow ? ((find(id) || {}).pending || {}).kit : (find(id) || {}).kit) return look(36);
+      // the stream ended early: the kits may still land on the server
+      if (job.ids) return recover(id, job);
       failWith('jam');
     })();
     return job;
+  }
+  // the trace a finished turn keeps: how long it thought, what it did (the thinking itself, shortened)
+  const traceOf = (job) => ({ ms: job.thoughtMs || job.ms || Date.now() - job.t0, thought: job.thought.slice(0, 6000), steps: [...job.steps.values()].filter((s) => !/^paint:.*:redo$/.test(s.id) || s.state !== 'run').map((s) => ({ id: s.id, state: s.state, label: s.label, ms: s.ms, links: s.links, thumbs: s.thumbs ? s.thumbs.map((t) => ({ src: REF.test(t.src || '') ? t.src : undefined, href: t.href, title: t.title })) : undefined })) });
+
+  // a finished turn joins its chat; its kits (if any) become the design the chat is on. A new coin's edit token is
+  // kept by its coin (tokens[root]): with it, the next message here makes a version of this coin (api/make.js).
+  // Answers the turn's index. turn.k: the turn's first kit id (how another tab knows it landed). clear: the chat's
+  // pending message is this turn's (a newer one sent from another tab keeps its own). more(cur): more fields for the
+  // chat when the turn made kits.
+  function landTurn(id, rec, turn, kits, token, clear = true, more = null) {
+    const cur = find(id) || rec;
+    const fields = { turns: [...(cur.turns || []), turn] };
+    if (clear) fields.pending = null;
+    if (kits.length) {
+      const root = kits[0].root || kits[0].id;
+      Object.assign(fields, { kit: kits[0].id, root, name: kits[0].name, ticker: kits[0].ticker, bio: kits[0].bio, logo: kits[0].logo, banner: kits[0].banner, thumb: kits[0].thumb || null });
+      if (token && !(cur.tokens && cur.tokens[root])) fields.tokens = { ...(cur.tokens || {}), [root]: token };
+      if (more) Object.assign(fields, more(cur));
+    }
+    patch(id, fields);
+    return fields.turns.length - 1;
+  }
+  const tokenOf = (rec) => {
+    const c = currentOf(rec);
+    const root = (c && c.d.root) || rec.root || rec.kit;
+    return (rec.tokens && root && rec.tokens[root]) || undefined;
+  };
+
+  // A message whose stream was lost (a reload, a dropped connection, a phone that slept): the server finishes the
+  // turn anyway and keeps how it ended (api/kit/<first id>?turn=1). This looks until well past the turn's own
+  // deadline (the server stops at about 13 minutes), then gives up.
+  const TURN_MS = 15 * 60_000;
+  async function turnOf(firstId) {
+    const r = await fetch('/api/kit/' + encodeURIComponent(firstId) + '?turn=1', { cache: 'no-store' });
+    if (!r.ok) throw new Error('turn ' + r.status);
+    const j = await r.json();
+    return (j && j.turn) || null;
+  }
+  async function recover(id, job) {
+    const p = (find(id) || {}).pending;
+    const ids = (job && job.ids) || (p && p.ids);
+    const t = (job && job.t0) || (p && p.t) || 0;
+    const token = (job && job.token) || (p && p.token) || null;
+    const q = (p && p.q) || (job && job.q) || '';
+    const ours = (c) => !!(c && c.pending && Array.isArray(c.pending.ids) && c.pending.ids[0] === (ids && ids[0]));
+    // the turn is in the chat already (another tab kept the stream and landed it)
+    const landed = (c) => !!(c && Array.isArray(c.turns) && c.turns.some((x) => x && x.k === ids[0]));
+    const end = (how, err) => {
+      // a view showing this job redraws itself from it (and shows the error); otherwise the chat is drawn again
+      const watched = !!(job && job.subs && job.subs.size);
+      if (how === 'error') {
+        const c = find(id);
+        if (ours(c)) patch(id, { pending: null }); // (another tab's newer message keeps its own)
+        if (c && (!c.turns || !c.turns.length) && !c.pending) forget(id);
+      }
+      if (job && !job.end) {
+        if (err) job.error = err;
+        job.end = how;
+        job.ms = Date.now() - (job.t0 || Date.now());
+        job.subs.forEach((fn) => fn());
+      }
+      if (!watched && parse().kind === 'coin' && parse().id === id) route();
+      else renderSide();
+    };
+    if (!Array.isArray(ids) || !KIT_ID.test(ids[0] || '')) return end('error', { code: 'lost', text: SAY.lost });
+    for (let n = 0; n === 0 || Date.now() - t < TURN_MS; n++) {
+      if (n) await sleep(n < 24 ? 5000 : 15000);
+      if (job && job.end) return;
+      const c = find(id);
+      if (!c) return end('error', { code: 'lost', text: SAY.lost }); // deleted meanwhile (in another tab)
+      if (landed(c)) return end('done'); // another tab landed it: this view just catches up
+      let turn = null;
+      try {
+        turn = await turnOf(ids[0]);
+        // a turn from before the turn records: its kits are the only sign
+        if (!turn && n % 4 === 3) {
+          const old = (await Promise.all(ids.map((k) => fetchKit(k).catch(() => null)))).filter(Boolean);
+          if (old.length) turn = { ok: true, reply: old[0].note || 'here are two designs.', kits: old.map((k) => k.id) };
+        }
+      } catch (e) {
+        continue; // offline for a moment: try again
+      }
+      if (!turn) continue;
+      if (!turn.ok) return end('error', { code: String(turn.code || 'jam'), text: String(turn.error || SAY.jam).slice(0, 300) });
+      const kits = (await Promise.all((turn.kits || []).filter((k) => KIT_ID.test(k)).slice(0, 2).map((k) => fetchKit(k).catch(() => null)))).filter((k) => k && KIT_ID.test(k.id || '') && PIC.test(k.logo || '') && PIC.test(k.banner || ''));
+      if ((turn.kits || []).length && !kits.length) continue; // listed but not readable yet
+      const now = find(id);
+      if (!now) return end('error', { code: 'lost', text: SAY.lost });
+      if (landed(now)) return end('done'); // another tab landed it meanwhile
+      const t2 = { q, t, k: ids[0], a: String(turn.reply || (kits.length ? 'here are two designs.' : '')).slice(0, 4000), made: kits.length ? kits.map(designOf) : undefined, pick: null, v: kits.length ? kits[0].version : undefined };
+      landTurn(id, now, t2, kits, token, ours(now), (cur) => siteFields(cur, kits[0], null, ids, (job && job.keys) || (p && p.keys)));
+      return end('done');
+    }
+    end('error', { code: 'lost', text: SAY.lost });
   }
 
   // ---------- sidebar ----------
   let freshId = null;
   let doneId = null;
-  function row({ href, logo, name, sub, t, cur, making, fresh, justDone, onDelete }) {
+  let openRowMenu = null;
+  const closeRowMenu = () => {
+    if (!openRowMenu) return;
+    openRowMenu.menu.remove();
+    openRowMenu.wrap.classList.remove('menu-open');
+    openRowMenu = null;
+  };
+  document.addEventListener('click', closeRowMenu);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRowMenu(); });
+  function startRename(wrap, c) {
+    closeRowMenu();
+    const nameEl = wrap.querySelector('.row-name');
+    if (!nameEl) return;
+    const input = el('input', 'row-edit');
+    input.value = titleOf(c);
+    input.maxLength = 80;
+    input.setAttribute('aria-label', 'chat name');
+    let done = false;
+    const finishEdit = (keep) => {
+      if (done) return;
+      done = true;
+      if (keep && input.value.trim() !== titleOf(c)) renameChat(c.id, input.value);
+      else renderSide();
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finishEdit(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false); }
+    });
+    input.addEventListener('blur', () => finishEdit(true));
+    input.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+  function row({ href, logo, name, sub, t, cur, making, fresh, justDone, chat }) {
     const a = el('a', 'row' + (cur ? ' cur' : '') + (making ? ' making' : '') + (fresh ? ' fresh' : '') + (justDone ? ' just' : ''));
     a.href = href;
     if (cur) a.setAttribute('aria-current', 'page');
@@ -418,21 +749,50 @@
       time.dateTime = new Date(t).toISOString();
       a.appendChild(time);
     }
-    if (!onDelete) return a;
-    // a coin's own row can delete its chat (asks first)
+    if (!chat) return a;
+    // a chat's row: rename (the menu, or a double click on its name) and delete (asks first)
     const wrap = el('div', 'row-wrap');
-    const del = el('button', 'row-del', 'delete');
-    del.type = 'button';
-    del.setAttribute('aria-label', `delete the chat for ${name}`);
-    del.addEventListener('click', (e) => {
+    const more = el('button', 'row-more');
+    more.type = 'button';
+    more.setAttribute('aria-label', `options for ${name}`);
+    more.setAttribute('aria-haspopup', 'menu');
+    more.appendChild(svgIcon(ICON.dots, 16));
+    more.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (del.dataset.sure) return onDelete();
-      del.dataset.sure = '1';
-      del.textContent = 'sure?';
-      setTimeout(() => { delete del.dataset.sure; del.textContent = 'delete'; }, 3000);
+      const open = openRowMenu && openRowMenu.wrap === wrap;
+      closeRowMenu();
+      if (open) return;
+      const m = el('div', 'row-menu');
+      m.setAttribute('role', 'menu');
+      const ren = el('button');
+      ren.type = 'button';
+      ren.setAttribute('role', 'menuitem');
+      ren.append(svgIcon(ICON.pen, 16), 'rename');
+      ren.addEventListener('click', (ev) => { ev.stopPropagation(); startRename(wrap, chat); });
+      const del = el('button', 'danger');
+      del.type = 'button';
+      del.setAttribute('role', 'menuitem');
+      del.append(svgIcon(ICON.bin, 16), making ? 'delete (when done)' : 'delete');
+      if (making) del.disabled = true;
+      del.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (del.dataset.sure) return deleteChat(chat.id);
+        del.dataset.sure = '1';
+        del.lastChild.textContent = 'sure? delete';
+      });
+      m.append(ren, del);
+      m.addEventListener('click', (ev) => ev.stopPropagation());
+      wrap.appendChild(m);
+      wrap.classList.add('menu-open');
+      openRowMenu = { wrap, menu: m };
     });
-    wrap.append(a, del);
+    a.addEventListener('dblclick', (e) => {
+      if (!e.target.closest('.row-name')) return;
+      e.preventDefault();
+      startRename(wrap, chat);
+    });
+    wrap.append(a, more);
     return wrap;
   }
   function renderSide() {
@@ -440,34 +800,32 @@
     const keep = list.scrollTop;
     list.textContent = '';
     if (coins.length) {
-      $('sideLabel').textContent = 'your coins';
+      $('sideLabel').hidden = false;
       for (const c of coins) {
-        const ex = c.example && BY_ID[c.example];
         const making = running(c.id);
+        const logo = c.thumb || c.logo;
         list.appendChild(row({
-          href: '#/coin/' + c.id,
-          logo: ex ? exampleImg(ex) : c.logo ? img(c.logo) : null,
-          name: making && !c.name ? c.sentence : (c.name || (ex && ex.name) || c.sentence),
-          sub: making ? 'making' : '$' + (c.ticker || (ex && ex.ticker) || ''),
+          href: '/coin/' + c.id,
+          logo: logo ? img(logo) : null,
+          name: making && !c.name && !c.title ? c.sentence : titleOf(c),
+          sub: making ? 'working' : c.ticker ? '$' + c.ticker : 'chat',
           t: c.t,
           cur: r.kind === 'coin' && r.id === c.id,
           making,
           fresh: c.id === freshId,
           justDone: c.id === doneId,
-          onDelete: making ? null : () => deleteChat(c.id),
+          chat: c,
         }));
       }
       freshId = null;
       doneId = null;
     } else {
-      $('sideLabel').textContent = 'examples';
-      for (const k of KITS) {
-        list.appendChild(row({ href: '#/example/' + k.id, logo: exampleImg(k), name: k.name, sub: '$' + k.ticker, cur: r.kind === 'example' && r.id === k.id }));
-      }
+      $('sideLabel').hidden = false;
+      list.appendChild(el('p', 'side-empty', 'your chats will show up here.'));
     }
     list.scrollTop = keep;
   }
-  setInterval(() => { if (coins.length && !busy()) renderSide(); }, 60000);
+  setInterval(() => { if (coins.length && !busy() && !openRowMenu && !list.querySelector('.row-edit')) renderSide(); }, 60000);
 
   // phones: the sidebar slides over the page
   const small = matchMedia('(max-width: 860px)');
@@ -491,67 +849,80 @@
   (small.addEventListener ? small.addEventListener('change', setInert) : small.addListener(setInert));
   setInert();
 
-  // clicking the link you are already on still resets the view
+  // clean paths (wagbi.fun/coin/<id>), no #/ in them: links inside the app move with the history API and every app
+  // path serves the same index.html (vercel.json). Clicking the link you are already on still resets the view.
+  const APP_PATH = /^\/(?:$|coins$|coin\/[\w-]+$|example\/[\w-]+$|k\/[A-Za-z0-9_-]{16}$)/;
+  function go(path, replace) {
+    if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState'](null, '', path);
+    route();
+  }
   document.addEventListener('click', (e) => {
-    const a = e.target.closest && e.target.closest('a[href^="#/"]');
-    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
-    if (a.getAttribute('href') === (location.hash || '#/')) { e.preventDefault(); route(); }
+    const a = e.target.closest && e.target.closest('a[href^="/"]');
+    if (!a || a.target || a.hasAttribute('download') || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+    const href = a.getAttribute('href');
+    if (!APP_PATH.test(href)) return;
+    e.preventDefault();
+    go(href);
   });
 
   // ---------- routes ----------
   function parse() {
-    const h = location.hash;
-    let m = h.match(/^#\/coin\/([\w-]+)$/);
+    const h = location.pathname.replace(/\/+$/, '') || '/';
+    let m = h.match(/^\/coin\/([\w-]+)$/);
     if (m) return { kind: 'coin', id: m[1] };
-    m = h.match(/^#\/example\/([\w-]+)$/);
+    m = h.match(/^\/example\/([\w-]+)$/);
     if (m) return { kind: 'example', id: m[1] };
-    m = h.match(/^#\/k\/([A-Za-z0-9_-]{16})$/);
+    m = h.match(/^\/k\/([A-Za-z0-9_-]{16})$/);
     if (m) return { kind: 'kit', id: m[1] };
-    if (h === '#/coins') return { kind: 'coins' };
+    if (h === '/coins') return { kind: 'coins' };
     return { kind: 'new' };
   }
   let gen = 0;
   let streamNext = null;
   function route() {
     closeNav();
+    openPlus(false);
     gen++;
     const r = parse();
     const fresh = streamNext;
     streamNext = null;
     coinsTab.hidden = true;
     $('coinsRow').classList.toggle('cur', r.kind === 'coins');
+    if (r.kind === 'example') return go('/', true); // the examples are gone
     if (r.kind === 'coins') {
       showCoins();
       renderSide();
       return;
     }
-    if (r.kind === 'coin') {
-      const c = find(r.id);
-      if (c && c.example) {
-        showChat(c, 'demo');
-        renderSide();
-        return;
-      }
-      if (c || jobs[r.id]) {
-        showReal(c || {}, r.id, fresh === r.id);
-        renderSide();
-        return;
-      }
+    if (r.kind === 'coin' && (find(r.id) || jobs[r.id])) {
+      showChatView(r.id, fresh === r.id);
+      renderSide();
+      return;
     }
     if (r.kind === 'kit') {
       showKitPage(r.id);
       renderSide();
       return;
     }
-    if (r.kind === 'example' && BY_ID[r.id]) {
-      const k = BY_ID[r.id];
-      showChat({ sentence: k.sentence, example: k.id, name: k.name, ticker: k.ticker }, 'example');
-    } else {
-      showNew();
-    }
+    if (r.kind === 'coin') return go('/', true);
+    showNew();
     renderSide();
   }
-  addEventListener('hashchange', route);
+  addEventListener('popstate', route);
+
+  function placeComposer(where) {
+    composer.classList.remove('away', 'up', 'on');
+    if (where === 'hero') {
+      composer.classList.remove('dock');
+      hero.appendChild(composer);
+    } else {
+      composer.classList.add('dock');
+      const wrap = el('div', 'dock-wrap');
+      wrap.appendChild(composer);
+      wrap.appendChild(el('p', 'dock-note', `${B.name} makes mistakes sometimes. check a coin before you launch it.`));
+      thread.appendChild(wrap);
+    }
+  }
 
   function showNew() {
     document.title = B.name;
@@ -559,10 +930,9 @@
     thread.hidden = true;
     thread.textContent = '';
     hero.hidden = false;
+    made.hidden = false; // the newest launches, under the prompt (launch.js fills it when there are any)
     hero.classList.remove('leaving');
-    made.hidden = false;
-    hero.insertBefore(composer, $('chips'));
-    composer.classList.remove('away', 'up', 'on');
+    placeComposer('hero');
     ta.value = '';
     fit();
     ph.classList.remove('out', 'pre');
@@ -572,122 +942,103 @@
     focusPrompt();
   }
 
-  // in a coin's chat the box talks to that coin: the message changes it and makes its next version
-  function followUp(c, text) {
-    const pending = { ask: text, from: c.kit, t: Date.now() };
-    patch(c.id, { pending, t: Date.now() });
-    startJob(find(c.id) || c, false, pending);
-    streamNext = c.id;
-    document.body.dataset.state = 'making';
-    ta.value = '';
-    fit();
-    ta.blur();
-    route();
-  }
-
   async function submit(raw) {
     const text = (raw || '').replace(/\s+/g, ' ').trim().slice(0, MAX_LEN);
-    if (!text || document.body.dataset.state === 'making') return;
+    if (!text || document.body.dataset.state === 'making' || uploading()) return;
     const r = parse();
-    if (r.kind === 'coin') {
-      const c = find(r.id);
-      if (c && !c.example && c.kit && c.logo && !running(c.id)) {
-        // "a meme generator for this character": that's a tool, not a change to the coin
-        if (wantsMemeTool(text)) {
-          ta.value = '';
-          fit();
-          const btn = thread.querySelector('.tool-btn');
-          if (btn && !btn.classList.contains('on')) btn.click();
-          return;
-        }
-        return followUp(c, text);
+    // "a meme generator for this character": that's a tool, not a message
+    if (r.kind === 'coin' && wantsMemeTool(text)) {
+      const btn = thread.querySelector('.tool-btn');
+      if (btn) {
+        ta.value = '';
+        fit();
+        if (!btn.classList.contains('on')) btn.click();
+        return;
       }
     }
-    const rec = { id: newId(), sentence: text, t: Date.now() };
-    coins.unshift(rec);
-    if (coins.length > MAX) coins.length = MAX;
-    save();
-    startJob(rec);
-    freshId = rec.id;
+    const files = draft.filter((a) => a.kind === 'img' && a.url && !a.bad).map((a) => a.url);
+    const links = draft.filter((a) => a.kind === 'link').map((a) => a.url);
+    let rec = r.kind === 'coin' ? find(r.id) : null;
+    if (rec && running(rec.id)) return;
+    const fresh = !rec;
+    if (!rec) {
+      rec = { id: newId(), sentence: text, t: Date.now(), turns: [] };
+      coins.unshift(rec);
+      if (coins.length > MAX) coins.length = MAX;
+      save();
+      freshId = rec.id;
+    } else {
+      patch(rec.id, { t: Date.now() });
+    }
+    startJob(rec, { q: text, files, links, web: webOn, from: rec.kit || null, token: tokenOf(rec), history: historyOf(rec), siteKey: (rec.siteKeys || {})[rec.root] || null });
     streamNext = rec.id;
     document.body.dataset.state = 'making';
     ta.value = '';
+    clearDraft();
     fit();
     ta.blur();
-    if (!hero.hidden && !reduce) {
-      hero.classList.add('leaving');
-      await wait(300);
-    }
-    location.hash = '#/coin/' + rec.id;
-  }
-
-  // ---------- one coin, one chat ----------
-  function noteFor(rec, mode) {
-    const kit = BY_ID[rec.example];
-    const note = el('p', 'note');
-    if (mode === 'example') {
-      note.textContent = 'example: a real kit this sentence made. type your own to make one.';
-    } else if (norm(rec.sentence) === norm(kit.sentence)) {
-      note.textContent = 'demo for now: this is the real kit this sentence made.';
+    if (fresh) {
+      if (!hero.hidden && !reduce) {
+        hero.classList.add('leaving');
+        await wait(260);
+      }
+      go('/coin/' + rec.id);
     } else {
-      note.append('demo for now: the engine is not wired yet, so here is a real kit made from ');
-      note.appendChild(el('q', '', kit.sentence));
-      note.append('.');
+      route();
     }
-    return note;
   }
 
-  function kitCard(rec) {
-    const kit = BY_ID[rec.example];
-    const card = el('div', 'kit');
-    const banner = el('div', 'kit-banner');
-    banner.innerHTML = uniq(kit.banner);
-    const body = el('div', 'kit-body');
-    const logo = el('div', 'kit-logo');
-    logo.innerHTML = uniq(kit.logo);
-    const id = el('div', 'kit-id');
-    id.append(el('h2', '', rec.name || kit.name), el('span', '', '$' + (rec.ticker || kit.ticker)));
-    const bio = el('p', 'kit-bio', kit.bio);
-    body.append(logo, id, bio);
-    card.append(banner, body);
-    return card;
+  // ---------- the reply's text: paragraphs, lists, bold and links, built as nodes (never as html) ----------
+  function inline(parent, text) {
+    const re = /(\*\*[^*\n]+\*\*|https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
+    let at = 0;
+    for (const m of text.matchAll(re)) {
+      if (m.index > at) parent.append(text.slice(at, m.index));
+      const s = m[0];
+      if (s.startsWith('**')) parent.appendChild(el('strong', '', s.slice(2, -2)));
+      else {
+        const a = el('a', '', shortUrl(s));
+        a.href = s;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer nofollow';
+        parent.appendChild(a);
+      }
+      at = m.index + s.length;
+    }
+    if (at < text.length) parent.append(text.slice(at));
   }
-
-  // a real kit: the images arrive one by one, so each box waits until its picture is in
-  function realCard() {
-    const card = el('div', 'kit');
-    const banner = el('div', 'kit-banner wait');
-    const body = el('div', 'kit-body');
-    const logo = el('div', 'kit-logo wait');
-    const id = el('div', 'kit-id');
-    const h2 = el('h2');
-    const tick = el('span');
-    id.append(h2, tick);
-    const bio = el('p', 'kit-bio');
-    body.append(logo, id, bio);
-    card.append(banner, body);
-    const put = (box, src) => {
-      if (!src || box.dataset.src === src) return;
-      box.dataset.src = src;
-      const old = box.querySelector('img');
-      const i = img(src);
-      if (old) i.addEventListener('load', () => old.remove());
-      const show = () => box.classList.remove('wait');
-      i.addEventListener('load', show);
-      i.addEventListener('error', show);
-      box.appendChild(i);
-    };
-    return {
-      card, logo, id, bio,
-      fill(k) {
-        h2.textContent = k.name || '';
-        tick.textContent = k.ticker ? '$' + k.ticker : '';
-        bio.textContent = k.bio || '';
-        put(logo, k.logo);
-        put(banner, k.banner);
-      },
-    };
+  function richText(box, text) {
+    box.textContent = '';
+    const blocks = String(text || '').replace(/\r/g, '').split(/\n{2,}/);
+    for (const b of blocks) {
+      const lines = b.split('\n');
+      if (lines.every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l) || !l.trim())) {
+        const ul = el('ul');
+        for (const l of lines) {
+          if (!l.trim()) continue;
+          const li = el('li');
+          inline(li, l.replace(/^\s*([-*•]|\d+[.)])\s+/, ''));
+          ul.appendChild(li);
+        }
+        box.appendChild(ul);
+      } else {
+        const p = el('p');
+        lines.forEach((l, i) => {
+          if (i) p.appendChild(el('br'));
+          inline(p, l);
+        });
+        box.appendChild(p);
+      }
+    }
   }
+  const thinkText = (box, text) => {
+    box.textContent = '';
+    const parts = String(text || '').split(/(\*\*[^*\n]+\*\*)/);
+    for (const p of parts) {
+      if (/^\*\*[^*\n]+\*\*$/.test(p)) box.appendChild(el('strong', '', p.slice(2, -2)));
+      else if (p) box.append(p);
+    }
+  };
 
   // the launch button. getCtx() -> the coin to launch ({ kitId, name, ticker, bio, logo, banner, saved, save }),
   // or null for an example (examples aren't real kits, so they can't launch)
@@ -740,76 +1091,6 @@
     return row;
   }
 
-  function stepItem([doing, label], done) {
-    const li = el('li', done ? 'done' : 'up now');
-    const t = el('span', '', done ? label : doing);
-    li.append(el('i'), t);
-    return { li, t };
-  }
-
-  const reveal = (n) => { n.classList.add('up'); requestAnimationFrame(() => requestAnimationFrame(() => n.classList.add('on'))); };
-  function follow(node) {
-    const r = node.getBoundingClientRect();
-    const over = r.bottom - (innerHeight - 40);
-    if (over > 0) scrollBy({ top: over, behavior: reduce ? 'auto' : 'smooth' });
-  }
-
-  function chatFrame(sentence, title) {
-    document.title = `${title} · ${B.name}`;
-    hero.hidden = true;
-    made.hidden = true;
-    thread.hidden = false;
-    thread.textContent = '';
-    scrollTo({ top: 0 });
-    const me = el('div', 'me');
-    me.appendChild(el('p', '', sentence));
-    const bot = el('div', 'bot');
-    const head = el('div', 'bot-head');
-    head.innerHTML = mark();
-    thread.append(me, bot);
-    thread.appendChild(composer);
-    composer.classList.remove('up', 'on');
-    return { me, bot, head };
-  }
-
-  function composerBack(again) {
-    holdPh('make another one');
-    ta.value = again || '';
-    composer.classList.remove('away');
-    fit();
-    composer.classList.add('up');
-    void composer.offsetWidth;
-    requestAnimationFrame(() => composer.classList.add('on'));
-    document.body.dataset.state = 'idle';
-    focusPrompt();
-  }
-
-  // examples and demo era coins: shown as they ended
-  function showChat(rec, mode) {
-    const { bot, head } = chatFrame(rec.sentence, rec.name);
-    head.appendChild(noteFor(rec, mode));
-    const steps = el('ol', 'steps');
-    STEPS.forEach((s) => steps.appendChild(stepItem(s, true).li));
-    bot.append(head, steps, kitCard(rec), goRow(() => null));
-    composer.classList.remove('away');
-    holdPh(mode === 'example' ? 'make your own' : 'make another one');
-    ta.value = '';
-    fit();
-    document.body.dataset.state = 'idle';
-    focusPrompt();
-  }
-
-  const follow2 = (n) => follow(n); // showReal has a flag named follow
-
-  // a real coin is a conversation: its finished versions as they ended, then the make running here (the first one
-  // or a follow-up), live. the launch row sits under the current version; the box below keeps talking to the coin.
-  const FOLLOW_STEPS = [
-    ['reading your change', 'read'],
-    ['making the new version', 'new version'],
-    ['giving it a second look', 'second look'],
-  ];
-  const ASK_HINT = 'change anything: a shorter name, a blue logo, the banner at night';
-
   // tools: small apps for a coin. Each runs in a sandboxed frame (tool/*.html, vercel.json's CSP): an opaque origin
   // with no network, no storage, no cookies, no wagbi API and no wallet. Money only ever moves through the launch.
   function memeTool(k) {
@@ -852,275 +1133,507 @@
   }
   const wantsMemeTool = (t) => /\bmemes?\b/i.test(t) && /\b(generator|maker|tool|app|machine)\b/i.test(t);
 
+  // ---------- a chat ----------
+  const reveal = (n) => { n.classList.add('up'); requestAnimationFrame(() => requestAnimationFrame(() => n.classList.add('on'))); };
+  function follow(node) {
+    const r = node.getBoundingClientRect();
+    const dock = thread.querySelector('.dock-wrap');
+    const bottom = innerHeight - (dock ? dock.getBoundingClientRect().height : 0) - 16;
+    const over = r.bottom - bottom;
+    if (over > 0) scrollBy({ top: over, behavior: reduce ? 'auto' : 'smooth' });
+  }
+  const nearBottom = () => innerHeight + scrollY >= document.documentElement.scrollHeight - 160;
+
+  // the person's message: its words, its pictures, its links
+  function meView(q, files, links) {
+    const me = el('div', 'me');
+    if ((files && files.length) || (links && links.length)) {
+      const box = el('div', 'me-atts');
+      for (const u of files || []) {
+        if (!PIC.test(u)) continue;
+        const a = el('a');
+        a.href = u;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.style.padding = '0';
+        a.style.border = '0';
+        a.appendChild(img(u, 'a picture you added'));
+        box.appendChild(a);
+      }
+      for (const u of links || []) {
+        if (!safeHref(u)) continue;
+        const a = el('a');
+        a.href = u;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.append(svgIcon(ICON.link, 14), isPostLink(u) ? 'a post on x' : shortUrl(u));
+        a.title = u;
+        box.appendChild(a);
+      }
+      me.appendChild(box);
+    }
+    me.appendChild(el('p', '', q));
+    return me;
+  }
+
+  // the work: thinking (as it streams) and each step, collapsible like Claude's
+  function traceView(get, { live = false, open = false } = {}) {
+    const box = el('div', 'trace' + (live ? ' live' : '') + (open ? ' open' : ''));
+    const head = el('button', 'trace-head');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', String(open));
+    const title = el('span', 'trace-title');
+    const time = el('span', 'trace-time');
+    head.append(svgIcon(ICON.chev, 14), title, time);
+    head.firstChild.classList.add('chev');
+    const body = el('div', 'trace-body');
+    const think = el('div', 'think-text');
+    const steps = el('ol', 'steps2');
+    body.append(think, steps);
+    box.append(head, body);
+    let loaded = false;
+    head.addEventListener('click', async () => {
+      const on = !box.classList.contains('open');
+      box.classList.toggle('open', on);
+      head.setAttribute('aria-expanded', String(on));
+      if (on && !loaded && get.load) {
+        loaded = true;
+        await get.load();
+        update();
+      }
+    });
+    const rows = new Map();
+    function stepRow(s) {
+      let r = rows.get(s.id);
+      if (!r) {
+        const li = el('li', 'st');
+        const i = el('i');
+        const label = el('span', 'st-label');
+        const t = el('span', 'st-time');
+        li.append(i, label, t);
+        r = { li, label, t, more: null };
+        rows.set(s.id, r);
+        steps.appendChild(li);
+      }
+      r.li.className = 'st ' + (s.state || 'done');
+      r.label.textContent = s.label || '';
+      const ms = s.state === 'run' ? Date.now() - (s.t0 || Date.now()) : s.ms;
+      const paintRun = s.state === 'run' && /^paint:/.test(s.id);
+      // (Kie doesn't always say when a picture leaves its queue, so a running picture is just 'painting')
+      r.t.textContent = paintRun ? `painting · ${secs(ms)}` : s.state === 'run' ? (ms > 1500 ? secs(ms) : '') : ms > 900 ? secs(ms) : '';
+      const extras = (s.thumbs && s.thumbs.length) || (s.links && s.links.length);
+      if (extras && !r.more) {
+        r.more = el('div', 'st-more');
+        for (const th of s.thumbs || []) {
+          const a = el('a', 'st-thumb');
+          a.href = safeHref(th.href) || '#';
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.title = th.title || '';
+          if (th.src) a.appendChild(img(th.src, th.title || ''));
+          else a.textContent = '';
+          if (!th.src) { a.className = 'st-link'; a.textContent = th.title || shortUrl(th.href || ''); }
+          r.more.appendChild(a);
+        }
+        for (const l of (s.links || []).slice(0, 5)) {
+          if (!safeHref(l && l.href)) continue;
+          const a = el('a', 'st-link');
+          a.href = l.href;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          let host = '';
+          try { host = new URL(l.href).hostname.replace(/^www\./, ''); } catch (e) { /* as is */ }
+          a.append(el('b', '', host), ' ' + (l.title || ''));
+          a.title = l.title || l.href;
+          r.more.appendChild(a);
+        }
+        r.li.appendChild(r.more);
+      }
+    }
+    function update() {
+      const st = get();
+      box.classList.toggle('live', !!st.live);
+      title.textContent = st.live ? (st.phase || 'thinking') : st.ms ? `thought for ${secs(st.ms)}` : 'how it was made';
+      time.textContent = st.live ? secs(Date.now() - st.t0) : st.count ? `${st.count} step${st.count > 1 ? 's' : ''}` : '';
+      if (st.thought != null) {
+        thinkText(think, st.live ? st.thought.slice(-1400) : st.thought);
+        think.classList.toggle('short', st.thought.length < 300);
+      }
+      for (const s of st.steps || []) stepRow(s);
+    }
+    update();
+    return { box, update, open(on) { box.classList.toggle('open', on); head.setAttribute('aria-expanded', String(on)); } };
+  }
+
+  // one design: banner, logo, words; live ones fill in as they arrive
+  function designCard(i, { onPick } = {}) {
+    const card = el('article', 'dcard');
+    const banner = el('div', 'dc-banner');
+    const body = el('div', 'dc-body');
+    const top = el('div', 'dc-top');
+    const logo = el('div', 'dc-logo');
+    const tag = el('span', 'dc-tag', i === 0 ? 'design a' : 'design b');
+    top.append(logo, tag);
+    const id = el('div', 'dc-id');
+    const h3 = el('h3');
+    const tick = el('span');
+    id.append(h3, tick);
+    const bio = el('p', 'dc-bio');
+    const angle = el('p', 'dc-angle');
+    const foot = el('div', 'dc-foot');
+    const pick = el('button', 'dc-pick', 'use this one');
+    pick.type = 'button';
+    pick.disabled = true;
+    foot.appendChild(pick);
+    body.append(top, id, bio, angle, foot);
+    card.append(banner, body);
+    const sk = [el('span', 'dc-skel w1'), el('span', 'dc-skel w2'), el('span', 'dc-skel w3')];
+    body.insertBefore(sk[0], id);
+    body.insertBefore(sk[1], id);
+    body.insertBefore(sk[2], id);
+    const put = (box, src, alt) => {
+      if (!src || box.dataset.src === src) return;
+      box.dataset.src = src;
+      const old = box.querySelectorAll('img');
+      const im = img(src, alt);
+      im.addEventListener('load', () => { old.forEach((o) => o.remove()); box.querySelector('.wait-pic')?.remove(); box.querySelector('.pic-status')?.remove(); });
+      box.appendChild(im);
+    };
+    const waitOn = (box, status) => {
+      if (box.dataset.src) return;
+      if (!box.querySelector('.wait-pic')) box.appendChild(el('span', 'wait-pic'));
+      let s = box.querySelector('.pic-status');
+      if (status) {
+        if (!s) { s = el('span', 'pic-status'); box.appendChild(s); }
+        s.textContent = status;
+      } else if (s) s.remove();
+    };
+    if (onPick) pick.addEventListener('click', () => onPick(i));
+    return {
+      card,
+      fill(d, { live = false, status = {}, picked = false, done = false } = {}) {
+        if (d && d.name) {
+          sk.forEach((s) => s.remove());
+          h3.textContent = d.name;
+          tick.textContent = d.ticker ? '$' + d.ticker : '';
+          bio.textContent = d.bio || '';
+          angle.textContent = d.angle || '';
+        }
+        const logoSrc = d && (d.thumb || d.logo);
+        if (logoSrc) put(logo, logoSrc, d.name ? `${d.name} logo` : 'logo');
+        else if (live) waitOn(logo, null);
+        if (d && d.banner) put(banner, d.banner, d.name ? `${d.name} banner` : 'banner');
+        else if (live) waitOn(banner, status.banner || status.logo || 'waiting for its words');
+        card.classList.toggle('picked', picked);
+        pick.disabled = !done || picked;
+        pick.textContent = '';
+        if (picked) pick.append(svgIcon(ICON.check, 16), 'using this one');
+        else pick.append(done ? 'use this one' : 'painting…');
+        if (done && d && d.kit && !foot.querySelector('.dc-dl')) {
+          const dl = el('a', 'dc-dl', 'open the files');
+          dl.href = d.logo;
+          dl.target = '_blank';
+          dl.rel = 'noopener';
+          dl.title = 'the logo (1024 px png); the banner opens from its picture';
+          banner.style.cursor = 'zoom-in';
+          banner.addEventListener('click', () => window.open(d.banner, '_blank', 'noopener'));
+          foot.appendChild(dl);
+        }
+      },
+    };
+  }
+
+  // the launch row: the chat's current design is what launches (launch.js, unchanged)
   function launchCtx(id, rec) {
     const r = find(id) || rec;
     if (!r.kit) return undefined;
-    const turns = turnsOf(r);
+    const c = currentOf(r);
     return {
-      kitId: r.kit, coinId: (turns[0] && turns[0].kit) || r.kit, name: r.name, ticker: r.ticker, bio: r.bio, logo: r.logo, banner: r.banner,
+      kitId: r.kit, coinId: (c && c.d.root) || r.root || r.kit, name: r.name, ticker: r.ticker, bio: r.bio, logo: r.logo, banner: r.banner,
       saved: r.launch, save: (f) => patch(id, { launch: f }),
     };
   }
 
-  function showReal(rec, id, fresh) {
+  // picking a design makes it the chat's current one: the next message changes it, it is what launches, and the
+  // coin's website shows it (the server is told; the card under the design shows the site once it has changed)
+  const sitePicks = {}; // chat id -> the pick on its way to the server
+  function pickDesign(id, ti, i) {
+    const rec = find(id);
+    if (!rec || running(id)) return;
+    const turns = rec.turns.slice();
+    const t = { ...turns[ti], pick: i };
+    turns[ti] = t;
+    const d = t.made[i];
+    patch(id, { turns, kit: d.kit, root: d.root || rec.root, name: d.name, ticker: d.ticker, bio: d.bio, logo: d.logo, banner: d.banner, thumb: d.thumb || null });
+    const L = window.WagbiLaunch;
+    if (L && L.pickSite) {
+      const p = (sitePicks[id] = L.pickSite(d.kit, (rec.siteKeys || {})[d.root || rec.root], (rec.tokens || {})[d.root || rec.root])
+        .then((site) => {
+          const cur = find(id);
+          if (site && cur && cur.kit === d.kit) patch(id, { site: siteRec(site, d.kit) });
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (sitePicks[id] !== p) return;
+          delete sitePicks[id];
+          redrawSite(id);
+        }));
+    }
+    route();
+  }
+
+  // the coin's website, live, under the design the chat is on (launch.js draws the card)
+  function siteBlock(rec) {
+    const host = el('div', 'sc-host');
+    host.dataset.chat = rec.id;
+    fillSite(host, rec);
+    return host;
+  }
+  function fillSite(host, rec) {
+    const L = window.WagbiLaunch;
+    host.textContent = '';
+    if (!L || !L.siteCard || !rec.kit) return;
+    const o = { title: "your coin's website", note: 'its own site, made with the coin. it updates as the coin changes, and it goes into the coin as its website when you launch.' };
+    if (sitePicks[rec.id]) {
+      const wait = el('div', 'sc sc-wait');
+      wait.appendChild(el('p', '', 'putting this design on your website'));
+      host.appendChild(wait);
+      return;
+    }
+    if (okSite(rec.site) && rec.site.kit === rec.kit) {
+      host.appendChild(L.siteCard(rec.site, { ...o, version: rec.site.rev || rec.kit }));
+      return;
+    }
+    L.siteOf(rec.kit, true).then((site) => {
+      if (!site || !host.isConnected) return;
+      const cur = find(rec.id);
+      if (cur && cur.kit === rec.kit) patch(rec.id, { site: siteRec(site, rec.kit) });
+      host.textContent = '';
+      host.appendChild(L.siteCard(site, { ...o, version: site.rev || rec.kit }));
+    });
+  }
+  function redrawSite(id) {
+    const host = thread.querySelector(`.sc-host[data-chat="${id}"]`);
+    const rec = find(id);
+    if (host && rec) fillSite(host, rec);
+  }
+
+  // a finished turn (or the one running now): the message, the work, the reply, the designs
+  function turnView(rec, t, ti, job) {
+    const wrap = el('div', 'turn');
+    wrap.appendChild(meView(t.q, t.files, t.links));
+    const ai = el('div', 'ai');
+    const markBox = el('div', 'ai-mark');
+    markBox.innerHTML = mark();
+    const main = el('div', 'ai-main');
+    ai.append(markBox, main);
+    wrap.appendChild(ai);
+    // live while its job runs (it can end while this view is up: the view then shows how it ended)
+    const isLive = () => !!job && !job.end;
+    const live = isLive();
+    const tr = t.tr || (job ? traceOf(job) : null);
+    // the work: live from the job, else the turn's own record, else the kit's (loaded on first open)
+    let loadedTrace = null;
+    const traceState = () => {
+      if (isLive()) {
+        const steps = [...job.steps.values()];
+        const painting = steps.some((s) => s.state === 'run' && /^paint:/.test(s.id));
+        const phase = painting ? 'painting the designs' : steps.some((s) => s.state === 'run' && s.id === 'look') ? 'taking a second look' : job.reply && !job.designs.length ? 'writing' : 'thinking';
+        return { live: true, phase, t0: job.t0, thought: job.thought, steps, count: steps.length };
+      }
+      const src = loadedTrace || tr;
+      return { live: false, ms: src ? src.ms : null, thought: src ? src.thought || '' : '', steps: src ? src.steps || [] : [], count: src ? (src.steps || []).length : 0 };
+    };
+    traceState.load = async () => {
+      if (tr && (tr.thought || (tr.steps && tr.steps.length))) return;
+      const k = t.made && t.made[0] && t.made[0].kit;
+      if (!k) return;
+      try {
+        const kit = await fetchKit(k);
+        if (kit && kit.trace) loadedTrace = { ms: tr ? tr.ms : null, thought: kit.trace.thought || '', steps: kit.trace.steps || [] };
+      } catch (e) { /* stays as it was */ }
+    };
+    const hasTrace = live || (tr && (tr.thought || (tr.steps && tr.steps.length))) || (t.made && t.made.length && t.made[0].kit);
+    const trace = hasTrace ? traceView(traceState, { live, open: live }) : null;
+    if (trace) main.appendChild(trace.box);
+    const reply = el('div', 'reply');
+    main.appendChild(reply);
+    let pair = null;
+    const cards = [];
+    const ensurePair = (n) => {
+      if (!pair) {
+        pair = el('div', 'pair');
+        main.appendChild(pair);
+      }
+      while (cards.length < n) {
+        const c = designCard(cards.length, { onPick: (i) => pickDesign(rec.id, ti, i) });
+        cards.push(c);
+        pair.appendChild(c.card);
+      }
+    };
+    const foot = el('div', 'turn-foot');
+
+    function update() {
+      const live = isLive();
+      // the reply
+      const text = (job ? job.reply : t.a || '').replace(/\s+$/, '');
+      if (job && job.end === 'error' && !text) {
+        reply.classList.add('err');
+        reply.textContent = job.error.text;
+      } else {
+        richText(reply, text || '');
+        if (live && !job.designs.length && !job.steps.size && !text) reply.textContent = '';
+        if (live && text) {
+          const last = reply.lastElementChild || reply;
+          last.appendChild(el('span', 'cursor'));
+        }
+      }
+      if (job && job.end === 'error' && text) {
+        const e = el('p', 'reply err', job.error.text);
+        reply.appendChild(e);
+      }
+      // the designs
+      const made = live ? job.designs : t.made || [];
+      if (made.length || (live && job.steps.has('write'))) {
+        ensurePair(live ? 2 : made.length);
+        cards.forEach((c, i) => {
+          const d = made[i];
+          if (live) {
+            const status = {};
+            for (const k of ['logo', 'banner']) {
+              const s = job.steps.get(`paint:${i}:${k}`);
+              if (s && s.state === 'run') status[k] = `painting ${secs(Date.now() - (s.t0 || Date.now()))}`;
+            }
+            if (!status.banner && d && d.name && !d.banner) status.banner = 'starting';
+            c.fill(d || {}, { live: true, status, picked: false, done: false });
+          } else {
+            c.fill(d, { picked: t.pick === i, done: true });
+          }
+        });
+        if (pair) pair.classList.toggle('has-pick', !live && Number.isInteger(t.pick));
+      }
+      if (trace) {
+        trace.update();
+        // a message turned away before any work (busy, resting, offline) has no work to show
+        trace.box.hidden = !!(job && job.end === 'error' && !job.steps.size && !job.thought);
+      }
+    }
+    update();
+
+    if (!live && t.made && t.made.length) {
+      foot.textContent = '';
+      if (t.v) foot.appendChild(el('span', '', `version ${t.v}`));
+      if (Number.isInteger(t.pick)) {
+        const p = el('span');
+        p.append('using ', el('b', '', t.made[t.pick].name));
+        foot.appendChild(p);
+      } else if (t.made.length > 1) {
+        foot.appendChild(el('span', '', 'pick one to keep going with it, or just say what to change.'));
+      }
+      main.appendChild(foot);
+    }
+    return { wrap, main, update };
+  }
+
+  function showChatView(id, fresh) {
     const my = gen;
     const alive = () => my === gen;
-    let job = jobs[id];
-    if (!job && rec.kit && !rec.logo) job = startJob(rec, true); // left mid make (a reload): find the stored kit
-    if (!job && rec.pending && rec.pending.kit) job = startJob(rec, true, rec.pending); // a follow-up left mid make
+    let rec = find(id);
+    if (!rec && jobs[id]) rec = { id, sentence: jobs[id].q, t: jobs[id].t0, turns: [] };
+    if (rec.pending && !jobs[id]) {
+      // left mid message (a reload): its kits may still land
+      jobs[id] = { q: rec.pending.q, files: [], links: [], t0: rec.pending.t, reply: '', thought: '', steps: new Map(), designs: [], end: null, error: null, subs: new Set(), ids: rec.pending.ids, recovering: true };
+      jobs[id].steps.set('wait', { id: 'wait', state: 'run', label: 'still working on your last message', t0: rec.pending.t });
+      recover(id, jobs[id]);
+    }
+    const job = jobs[id];
     const live = !!job && !job.end;
-    const turns = turnsOf(rec);
-    const follow = !!job && job.follow;
-    // the exchange running here (or that just failed); a finished first make shows as a version instead
-    const showJob = !!job && (live || job.end === 'error') && (follow || !turns.length);
-
-    document.title = `${rec.name || 'making'} · ${B.name}`;
+    document.title = `${titleOf(rec)} · ${B.name}`;
     hero.hidden = true;
     made.hidden = true;
     thread.hidden = false;
     thread.textContent = '';
-    scrollTo({ top: 0 });
 
-    // finished versions
-    const go = goRow(() => launchCtx(id, rec));
-    turns.forEach((t, i) => {
-      const me = el('div', 'me');
-      me.appendChild(el('p', '', t.ask || rec.sentence));
-      const bot = el('div', 'bot');
-      const head = el('div', 'bot-head');
-      head.innerHTML = mark();
-      head.appendChild(el('p', 'note', i === 0 ? 'here is your coin.' : `version ${t.v || i + 1}. only what you asked for changed.`));
-      const card = realCard();
-      card.fill(t);
-      const ver = el('div', 'ver');
-      ver.appendChild(el('span', 'ver-n', `version ${t.v || i + 1}`));
-      if (t.kit === rec.kit) {
-        ver.appendChild(el('span', 'ver-cur', turns.length > 1 ? 'current: launch uses this one' : 'current'));
-      } else {
-        const b = el('button', 'ver-use', i < turns.length - 1 ? 'go back to this version' : 'use this version');
-        b.type = 'button';
-        b.addEventListener('click', () => {
-          patch(id, { kit: t.kit, name: t.name, ticker: t.ticker, bio: t.bio, logo: t.logo, banner: t.banner });
-          route();
-        });
-        ver.appendChild(b);
+    const turns = rec.turns || [];
+    const cur = currentOf(rec);
+    turns.forEach((t, ti) => {
+      const done = job && job.end === 'done' && job.turnIndex === ti ? job : null;
+      const v = turnView(rec, t, ti, done);
+      thread.appendChild(v.wrap);
+      // the coin's website, live, after the newest turn (so a change to it shows right under the reply); under the
+      // design the chat is on, once it is picked, the launch and the tools
+      const siteHere = cur && !live && ti === turns.length - 1;
+      if (siteHere && cur.i === ti) v.main.appendChild(siteBlock(rec));
+      if (cur && cur.i === ti && Number.isInteger(t.pick) && !live) {
+        v.main.appendChild(goRow(() => launchCtx(id, rec)));
+        v.main.appendChild(toolsRow(() => find(id) || rec));
       }
-      bot.append(head, card.card, ver);
-      thread.append(me, bot);
+      if (siteHere && cur.i !== ti) v.main.appendChild(siteBlock(rec));
     });
-    if (turns.length && !showJob) {
-      thread.appendChild(go);
-      thread.appendChild(toolsRow(() => find(id) || rec));
+
+    // the message running here, or the one that just failed
+    let liveView = null;
+    if (job && (live || job.end === 'error')) {
+      const t = { q: job.q, files: job.files, links: job.links };
+      liveView = turnView(rec, t, turns.length, job);
+      thread.appendChild(liveView.wrap);
     }
-    thread.appendChild(composer);
-    composer.classList.remove('up', 'on');
+    placeComposer('thread');
 
     const idle = (again) => {
-      composer.classList.remove('away');
-      holdPh(turns.length ? ASK_HINT : 'make another one');
-      if (turns.length) holdUntil = Infinity; // in a coin's chat the hint stays put
-      ta.value = again || '';
+      holdPh(cur ? 'say what to change, or ask anything' : turns.length ? 'ask anything, or describe a coin' : 'describe a coin', true);
+      ta.value = again || ta.value || '';
       fit();
       document.body.dataset.state = 'idle';
       focusPrompt();
     };
-    if (!showJob) {
-      idle('');
-      if (fresh || turns.length > 1) requestAnimationFrame(() => alive() && go.isConnected && follow2(go));
-      return;
-    }
-
-    // the make running here
-    const steps_ = follow ? FOLLOW_STEPS : STEPS;
-    const sentence = job.sentence;
-    const me = el('div', 'me');
-    me.appendChild(el('p', '', sentence));
-    const bot = el('div', 'bot');
-    const head = el('div', 'bot-head');
-    head.innerHTML = mark();
-    const note = el('p', 'note');
-    head.appendChild(note);
-    thread.insertBefore(me, composer);
-    thread.insertBefore(bot, composer);
-    const steps = el('ol', 'steps');
-    const items = [];
-    const card = realCard();
-    const shown = { head: false, steps: false, card: false, go: false };
-    let spinner = null;
-    let ended = false;
-
-    const state = () => {
-      const base = follow ? rec : {};
-      const k = { name: job.name || base.name, ticker: job.ticker || base.ticker, bio: job.bio || base.bio, logo: job.logo || base.logo || rec.logo, banner: job.banner || base.banner || rec.banner };
-      let at = steps_.length;
-      if (job.end !== 'done') {
-        if (follow) at = job.step === 'read' ? 0 : job.step === 'look' ? 2 : 1;
-        else {
-          at = STEP_AT[job.step] || 0;
-          if (job.name) at = Math.max(at, 2);
-          if (job.logo) at = Math.max(at, 3);
-          if (job.banner) at = Math.max(at, STEP_AT.look); // the second look runs after both pictures are drawn
-        }
-      }
-      return { k, at };
-    };
-
-    function update(animate) {
-      if (!alive()) {
-        job.subs.delete(onJob);
-        return;
-      }
-      const { k, at } = state();
-      const end = job.end;
-      const err = end === 'error' ? job.error : null;
-
-      if (!shown.head) {
-        shown.head = true;
-        bot.appendChild(head);
-        if (animate) reveal(head);
-        if (!end) spinner = spin(head.querySelector('.mark'));
-      }
-      note.textContent = err ? err.text : end ? (follow ? 'done. here is the new version.' : 'here is your coin.') : follow ? 'changing it. this takes about half a minute.' : 'making it. a coin takes about half a minute.';
-
-      if (!shown.steps) {
-        shown.steps = true;
-        bot.appendChild(steps);
-      }
-      const upto = err ? items.length : Math.min(at + 1, steps_.length);
-      while (items.length < upto) {
-        const s = stepItem(steps_[items.length], false);
-        if (!animate) s.li.classList.add('on');
-        steps.appendChild(s.li);
-        items.push(s);
-        if (animate) requestAnimationFrame(() => s.li.classList.add('on'));
-      }
-      items.forEach(({ li, t }, i) => {
-        const done = i < at;
-        li.classList.toggle('done', done);
-        li.classList.toggle('now', !done && !end);
-        t.textContent = done ? steps_[i][1] : steps_[i][0];
-        if (err && !done) li.remove();
-      });
-      if (err && !steps.children.length) steps.remove();
-      if (err && shown.card) card.card.remove();
-
-      if (!err && k.name) {
-        card.fill(k);
-        if (!shown.card) {
-          shown.card = true;
-          bot.appendChild(card.card);
-          if (animate) {
-            const order = [card.card, card.logo, card.id, card.bio];
-            order.forEach((n) => n.classList.add('up'));
-            order.forEach((n, i) => setTimeout(() => requestAnimationFrame(() => n.classList.add('on')), i * 170));
-            follow2(card.card);
-          }
-        }
-      }
-
-      if (end && !ended) {
-        ended = true;
-        if (spinner) spinner.stop();
-        job.subs.delete(onJob);
-        if (end === 'done') {
-          // the new version joins the conversation: draw it again as a finished version, with the launch row under it
-          setTimeout(() => alive() && route(), follow ? 500 : 900);
-        }
-        document.title = err ? `${rec.name || B.name} · ${B.name}` : `${k.name} · ${B.name}`;
-        if (err) idle(RETRY.has(err.code) ? sentence : '');
-      } else if (!end) {
-        if (k.name) document.title = `${k.name} · ${B.name}`;
-        follow2(steps);
-      }
-    }
-    const onJob = () => update(true);
 
     if (!live) {
-      bot.append(head, steps);
-      shown.head = shown.steps = true;
-      update(false);
+      idle(job && job.end === 'error' && RETRY.has(job.error.code) && !ta.value ? job.q : '');
+      if (job && job.end === 'error') delete jobs[id];
+      requestAnimationFrame(() => alive() && scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' }));
       return;
     }
+
+    // the message running here: everything it says, as it comes
     document.body.dataset.state = 'making';
-    composer.classList.add('away');
-    job.subs.add(onJob);
-    (async () => {
-      if (fresh) {
-        reveal(me);
-        await wait(420);
-        if (!alive()) return;
+    fit();
+    holdPh('wagbi is working on it', true);
+    const spinner = spin(liveView.wrap.querySelector('.ai-mark .mark'));
+    let ticking = null;
+    const onJob = () => {
+      if (!alive()) {
+        job.subs.delete(onJob);
+        clearInterval(ticking);
+        return;
       }
-      update(fresh);
-      requestAnimationFrame(() => alive() && follow2(me));
-    })();
+      const stick = nearBottom();
+      liveView.update();
+      if (stick) follow(liveView.wrap);
+      if (job.end) {
+        job.subs.delete(onJob);
+        clearInterval(ticking);
+        spinner.stop();
+        if (job.end === 'done') {
+          doneId = id;
+          setTimeout(() => alive() && route(), 350);
+        } else {
+          document.body.dataset.state = 'idle';
+          idle(RETRY.has(job.error.code) ? job.q : '');
+          delete jobs[id];
+        }
+      }
+    };
+    job.subs.add(onJob);
+    // the clocks on running steps tick even when nothing new arrives
+    ticking = setInterval(() => alive() && !job.end && liveView.update(), 1000);
+    if (fresh) reveal(liveView.wrap.querySelector('.me'));
+    requestAnimationFrame(() => alive() && scrollTo({ top: document.documentElement.scrollHeight, behavior: fresh && !reduce ? 'smooth' : 'auto' }));
   }
 
-  // ---------- the coins tab: every coin made on wagbi, newest first ----------
+  // ---------- the coins tab: launched coins first (live numbers), then every coin made and not launched ----------
+  // launch.js draws it (WagbiLaunch.coinsTab) and keeps its numbers fresh while it is on screen.
   const coinsTab = $('coins');
-  const coinsList = $('coinsList');
-  const coinsMore = $('coinsMore');
-  const coinsSeen = { list: [], next: null, filter: 'all', loading: false, loaded: 0 };
-  const shortCa = (a) => (a ? a.slice(0, 4) + '...' + a.slice(-4) : '');
-  function coinRow(c) {
-    const li = el('li');
-    const a = el('a', 'coin-row');
-    a.href = '#/k/' + c.id;
-    a.setAttribute('aria-label', `${c.name}, $${c.ticker}${c.launch ? ', launched' : ''}`);
-    const logo = el('span', 'coin-logo');
-    if (c.logo) logo.appendChild(img(c.logo));
-    const id = el('span', 'coin-id');
-    id.append(el('b', '', c.name), el('span', '', '$' + c.ticker));
-    const st = el('span', 'coin-st');
-    if (c.launch) {
-      st.append(el('span', 'coin-badge live', c.launch.cluster === 'devnet' ? 'launched (devnet)' : 'launched'), el('code', '', shortCa(c.launch.mint)));
-    } else {
-      st.append(el('span', 'coin-badge', 'made'));
-    }
-    const t = el('time', 'coin-t', ago(Date.parse(c.made)));
-    t.dateTime = c.made;
-    a.append(logo, id, el('span', 'coin-q', c.sentence), st, t);
-    li.appendChild(a);
-    return li;
-  }
-  function drawCoins() {
-    coinsList.textContent = '';
-    const shown = coinsSeen.list.filter((c) => coinsSeen.filter === 'all' || c.launch);
-    if (!shown.length) {
-      const li = el('li', 'coins-empty', coinsSeen.loading ? 'loading coins.' : coinsSeen.filter === 'live' ? 'no launched coins yet.' : 'no coins yet. make the first one.');
-      coinsList.appendChild(li);
-    }
-    shown.forEach((c) => coinsList.appendChild(coinRow(c)));
-    coinsMore.hidden = !coinsSeen.next;
-  }
-  async function loadCoins(more) {
-    if (coinsSeen.loading) return;
-    coinsSeen.loading = true;
-    if (!more) drawCoins();
-    try {
-      const q = more && coinsSeen.next ? '?before=' + encodeURIComponent(coinsSeen.next) : '';
-      const r = await fetch('/api/coins' + q);
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.error || 'could not load the coins.');
-      coinsSeen.list = more ? coinsSeen.list.concat(j.coins) : j.coins;
-      coinsSeen.next = j.next;
-      coinsSeen.loaded = Date.now();
-    } catch (e) {
-      coinsSeen.loading = false;
-      coinsList.textContent = '';
-      coinsList.appendChild(el('li', 'coins-empty', 'could not load the coins. try again in a minute.'));
-      return;
-    }
-    coinsSeen.loading = false;
-    drawCoins();
-  }
-  $('coinsFilter').addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    coinsSeen.filter = b.dataset.f;
-    $('coinsFilter').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-    drawCoins();
-  });
-  coinsMore.addEventListener('click', () => loadCoins(true));
   function showCoins() {
     document.title = `coins · ${B.name}`;
     document.body.dataset.state = 'idle';
@@ -1130,11 +1643,11 @@
     thread.textContent = '';
     coinsTab.hidden = false;
     scrollTo({ top: 0 });
-    drawCoins();
-    if (Date.now() - coinsSeen.loaded > 20_000) loadCoins(false);
+    if (window.WagbiLaunch) window.WagbiLaunch.coinsTab($('coinsBody'));
   }
 
-  // ---------- a coin's public page: /k/<kit id>, the link pump.fun shows ----------
+  // ---------- a coin's public page: /k/<kit id>, the link the launchpad shows ----------
+  // launch.js draws it (WagbiLaunch.kitPage): the coin, and once it is live its market, contract, links and fees.
   function showKitPage(kitId) {
     const my = gen;
     document.title = B.name;
@@ -1143,13 +1656,8 @@
     thread.hidden = false;
     thread.textContent = '';
     scrollTo({ top: 0 });
-    const bot = el('div', 'bot');
-    const head = el('div', 'bot-head');
-    head.innerHTML = mark();
-    const note = el('p', 'note', 'loading this coin.');
-    head.appendChild(note);
-    bot.appendChild(head);
-    thread.append(bot, composer);
+    const page = el('div', 'kp-host');
+    thread.append(page, composer);
     composer.classList.remove('away', 'up', 'on');
     holdPh('make your own coin');
     ta.value = '';
@@ -1157,25 +1665,12 @@
     document.body.dataset.state = 'idle';
     const L = window.WagbiLaunch;
     if (!L) return;
-    L.coinPage(bot, kitId).then((p) => {
-      if (my !== gen) return;
-      if (!p) {
-        note.textContent = 'this coin is not here.';
-        return;
-      }
-      const { kit, coin, wrap } = p;
-      wrap.remove();
-      document.title = `${kit.name} · ${B.name}`;
-      note.textContent = `made with ${B.name} from one sentence: `;
-      note.appendChild(el('q', '', kit.sentence));
-      if (p.versions.length > 1) note.append(` (${p.versions.length} versions; this is version ${kit.version || 1})`);
-      const card = realCard();
-      card.fill(kit);
-      bot.appendChild(card.card);
-      if (coin) bot.appendChild(L.liveBox(coin));
-      else bot.appendChild(el('p', 'note lp-notyet', 'not launched yet.'));
+    L.kitPage(page, kitId, { alive: () => my === gen }).then((kit) => {
+      if (my === gen && kit) document.title = `${kit.name} · ${B.name}`;
     });
   }
+  // a launch that went live in the sheet: draw the chat again, so the coin shows its live box
+  addEventListener('wagbi:launched', () => route());
 
   // ---------- voice: tap the mic, say the idea, the words land in the box (api/transcribe) ----------
   const mic = $('mic');
@@ -1306,7 +1801,8 @@
     if (syncing) { syncAgain = true; return; }
     syncing = true;
     try {
-      const sent = coins.filter((c) => !c.example);
+      // what the account keeps of a chat: everything but the thinking text (the kits keep their own trace)
+      const sent = coins.map((c) => ({ ...c, turns: (c.turns || []).map((t) => (t.tr ? { ...t, tr: { ms: t.tr.ms, steps: t.tr.steps } } : t)) }));
       const r = await fetch('/api/chats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chats: sent, deleted: deletedIds }) });
       if (r.status === 401) { auth.user = null; authUi(); return; }
       const j = await r.json();
@@ -1314,17 +1810,25 @@
       deletedIds = {};
       saveDeleted();
       const live = coins.filter((c) => running(c.id) || c.pending);
-      const merged = j.chats.filter(valid);
+      const merged = j.chats.map(migrate).filter(valid);
       for (const c of live) {
         const i = merged.findIndex((m) => m.id === c.id);
         if (i >= 0) merged[i] = c; else merged.unshift(c);
       }
-      const examples = coins.filter((c) => c.example && !merged.some((m) => m.id === c.id));
-      coins = [...merged, ...examples].sort((a, b) => b.t - a.t).slice(0, MAX);
+      // the thinking this device still has stays with its turns
+      for (const m of merged) {
+        const mine = find(m.id);
+        if (!mine || mine === m || !Array.isArray(mine.turns) || !Array.isArray(m.turns)) continue;
+        m.turns.forEach((t, i) => {
+          const o = mine.turns[i];
+          if (o && o.q === t.q && o.t === t.t && o.tr && o.tr.thought && t.tr && !t.tr.thought) t.tr = o.tr;
+        });
+      }
+      coins = merged.sort((a, b) => b.t - a.t).slice(0, MAX);
       try { localStorage.setItem(KEY, JSON.stringify(coins)); } catch (e) { /* memory only */ }
       renderSide();
       const rt = parse();
-      if (rt.kind === 'coin' && !find(rt.id) && !jobs[rt.id]) location.hash = '#/';
+      if (rt.kind === 'coin' && !find(rt.id) && !jobs[rt.id]) go('/', true);
     } catch (e) {
       /* offline: the next change tries again */
     } finally {
@@ -1362,9 +1866,21 @@
   }
 
   // coins left mid make by a reload: look for their stored kit once, quietly
-  coins.filter((c) => !c.example && c.kit && !c.logo).forEach((c) => startJob(c, true));
-  // /k/<kit id> (the link pump.fun shows) opens as #/k/<kit id>
-  const kp = location.pathname.match(/^\/k\/([A-Za-z0-9_-]{16})\/?$/);
-  if (kp && (!location.hash || location.hash === '#/')) history.replaceState(null, '', '/#/k/' + kp[1]);
+  coins.filter((c) => c.pending && Array.isArray(c.pending.ids)).forEach((c) => {
+    if (jobs[c.id]) return;
+    jobs[c.id] = { q: c.pending.q, files: [], links: [], t0: c.pending.t, reply: '', thought: '', steps: new Map([['wait', { id: 'wait', state: 'run', label: 'still working on your last message', t0: c.pending.t }]]), designs: [], end: null, error: null, subs: new Set(), ids: c.pending.ids, recovering: true };
+    recover(c.id, jobs[c.id]);
+  });
+  // links shared before the clean paths (wagbi.fun/#/coin/<id>) open at the clean path (also when one is pasted
+  // into the address bar while the site is open: that changes only the hash, the page doesn't load again)
+  const fromHash = () => {
+    if (/^#\/./.test(location.hash)) history.replaceState(null, '', location.hash.slice(1));
+    else if (location.hash === '#/') history.replaceState(null, '', '/');
+    else return false;
+    return true;
+  };
+  addEventListener('hashchange', () => { if (fromHash()) route(); });
+  fromHash();
   route();
+
 })();

@@ -19,10 +19,11 @@
     "bn.js": "5.2.5",
     "obscenity": "0.4.6",
     "printer-engine": "file:vendor/printer-engine-2.4.0.tgz",
-    "qrcode": "1.5.4"
+    "qrcode": "1.5.4",
+    "sharp": "0.35.5"
   },
   "scripts": {
-    "test": "node --test test/launch.test.mjs test/launch-pads.test.mjs test/auth.test.mjs test/engine.test.mjs"
+    "test": "node --test test/launch.test.mjs test/launch-pads.test.mjs test/auth.test.mjs test/engine.test.mjs test/market.test.mjs test/maker.test.mjs test/qa.test.mjs test/sites.test.mjs test/art.test.mjs"
   },
   "overrides": {
     "rpc-websockets": {
