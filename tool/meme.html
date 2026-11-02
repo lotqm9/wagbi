@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>meme generator</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https://*.public.blob.vercel-storage.com; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<!-- A coin's meme generator. It runs sandboxed (vercel.json: CSP sandbox, no same-origin): no cookies, no storage,
+     no wagbi APIs, no wallet; it can only show the coin's own pictures from the public kits store and save a PNG. -->
+<style>
+:root { --paper: #f4f4f1; --ink: #0b0b0c; --ink2: #4b4b47; --ink3: #8e8e88; --line: rgba(11,11,12,.12); --surface: #fafaf8; }
+* { box-sizing: border-box; margin: 0; }
+body { font: 500 14px/1.4 ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: var(--surface); padding: 14px; }
+.wrap { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; }
+canvas { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); background: #fff; display: block; }
+.side { display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink3); }
+input[type=text] { font: inherit; font-size: 14px; color: var(--ink); background: var(--paper); border: 1px solid rgba(11,11,12,.18); border-radius: 10px; padding: 8px 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button, .save { font: inherit; font-size: 13px; border: 1px solid rgba(11,11,12,.18); border-radius: 999px; padding: 5px 11px; background: transparent; cursor: pointer; color: var(--ink2); }
+.chips button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.save { background: var(--ink); color: var(--paper); border-color: var(--ink); padding: 10px 16px; font-weight: 600; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row input[type=color] { width: 36px; height: 30px; border: 1px solid rgba(11,11,12,.18); border-radius: 8px; padding: 0; background: none; }
+.err { color: #a3401f; font-size: 13px; }
+@media (max-width: 640px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="c" width="1080" height="1080" aria-label="the meme"></canvas>
+  <div class="side">
+    <label>top text<input type="text" id="top" maxlength="80" autocomplete="off"></label>
+    <label>bottom text<input type="text" id="bottom" maxlength="80" autocomplete="off"></label>
+    <div><div style="font-size:12px;color:var(--ink3);margin-bottom:4px">pose</div><div class="chips" id="poses"></div></div>
+    <div><div style="font-size:12px;color:var(--ink3);margin-bottom:4px">layout</div><div class="chips" id="layouts"></div></div>
+    <div class="row"><span style="font-size:12px;color:var(--ink3)">background</span><input type="color" id="bg" value="#f4f4f1"><div class="chips" id="bgs"></div></div>
+    <button class="save" id="save" type="button">save png</button>
+    <p class="err" id="err" hidden></p>
+  </div>
+</div>
+<script>
+const start = (q) => {
+  if (start.done) return;
+  start.done = true;
+  // the coin's pictures come in the URL fragment; only the public kits store is allowed
+  const OK = /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/kits\/[A-Za-z0-9_-]{16}\/(logo|banner)\.png$/;
+  const logoUrl = OK.test(q.get('logo') || '') ? q.get('logo') : null;
+  const bannerUrl = OK.test(q.get('banner') || '') ? q.get('banner') : null;
+  const name = (q.get('name') || '').slice(0, 40);
+  const ticker = (q.get('ticker') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
+  const c = document.getElementById('c');
+  const x = c.getContext('2d');
+  const $ = (id) => document.getElementById(id);
+  const S = { pose: 'normal', layout: 'classic', bg: '#f4f4f1', top: `when $${ticker || 'coin'} pumps`, bottom: name ? `${name} be like` : 'gm' };
+  $('top').value = S.top;
+  $('bottom').value = S.bottom;
+  const load = (src) => new Promise((res) => {
+    if (!src) return res(null);
+    const i = new Image();
+    i.crossOrigin = 'anonymous';
+    i.onload = () => res(i);
+    i.onerror = () => res(null);
+    i.src = src;
+  });
+  let logo = null, banner = null;
+
+  const POSES = {
+    normal: (d) => d(0, 0, 1, 0, false),
+    flip: (d) => d(0, 0, 1, 0, true),
+    tilt: (d) => d(0, 0, 1, -0.28, false),
+    zoom: (d) => d(0, 0.08, 1.7, 0, false),
+    tiny: (d) => d(0, 0.18, 0.38, 0, false),
+    upside: (d) => d(0, 0, 1, Math.PI, false),
+    squash: (d) => d(0, 0.12, 1, 0, false, 1.35, 0.7),
+    army: (d) => { for (let i = -1; i <= 1; i++) d(i * 0.6, 0.05, 0.55, i * 0.12, i > 0); },
+    peek: (d) => d(0.25, 0.55, 1.1, -0.2, false),
+  };
+  const LAYOUTS = ['classic', 'banner', 'reaction'];
+  const BGS = ['#f4f4f1', '#111111', '#ffd21f', '#4cc764', '#1f4bb4', '#ff5a1f'];
+
+  function chips(host, list, key) {
+    host.textContent = '';
+    for (const v of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = key === 'bg' ? '' : v;
+      if (key === 'bg') { b.style.background = v; b.style.width = '22px'; b.style.height = '22px'; b.style.padding = '0'; b.setAttribute('aria-label', v); }
+      b.className = S[key] === v ? 'on' : '';
+      b.addEventListener('click', () => { S[key] = v; if (key === 'bg') $('bg').value = v; chips(host, list, key); draw(); });
+      host.appendChild(b);
+    }
+  }
+
+  function caption(text, y, size) {
+    if (!text) return;
+    x.save();
+    x.font = `900 ${size}px Impact, 'Anton', 'Arial Black', sans-serif`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.lineJoin = 'round';
+    x.lineWidth = size / 6;
+    x.strokeStyle = '#000';
+    x.fillStyle = '#fff';
+    const words = text.toUpperCase().split(/\s+/);
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const t = cur ? cur + ' ' + w : w;
+      if (x.measureText(t).width > 980 && cur) { lines.push(cur); cur = w; } else cur = t;
+    }
+    if (cur) lines.push(cur);
+    const lh = size * 1.05;
+    const start = y - ((lines.length - 1) * lh) / 2;
+    lines.forEach((l, i) => { x.strokeText(l, 540, start + i * lh); x.fillText(l, 540, start + i * lh); });
+    x.restore();
+  }
+
+  function draw() {
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.fillStyle = S.bg;
+    x.fillRect(0, 0, 1080, 1080);
+    if (S.layout === 'banner' && banner) {
+      const h = 1080 / 3;
+      x.drawImage(banner, 0, 360 - h / 2 + 180, 1080, h);
+    }
+    const area = S.layout === 'reaction' ? { cx: 540, cy: 620, r: 430 } : { cx: 540, cy: 560, r: 330 };
+    const put = (dx, dy, scale, rot, flip, sx = 1, sy = 1) => {
+      if (!logo) return;
+      const s = area.r * 2 * scale;
+      x.save();
+      x.translate(area.cx + dx * area.r * 2, area.cy + dy * area.r * 2);
+      x.rotate(rot);
+      x.scale((flip ? -1 : 1) * sx, sy);
+      x.beginPath();
+      x.arc(0, 0, s / 2, 0, Math.PI * 2);
+      x.clip();
+      x.drawImage(logo, -s / 2, -s / 2, s, s);
+      x.restore();
+    };
+    (POSES[S.pose] || POSES.normal)(put);
+    if (S.layout === 'reaction') caption(S.top, 110, 96);
+    else { caption(S.top, 110, 100); caption(S.bottom, 990, 100); }
+    if (!logo) { x.fillStyle = '#8e8e88'; x.font = '500 36px system-ui'; x.textAlign = 'center'; x.fillText("this coin's picture didn't load", 540, 540); }
+  }
+
+  $('top').addEventListener('input', (e) => { S.top = e.target.value; draw(); });
+  $('bottom').addEventListener('input', (e) => { S.bottom = e.target.value; draw(); });
+  $('bg').addEventListener('input', (e) => { S.bg = e.target.value; chips($('bgs'), BGS, 'bg'); draw(); });
+  $('save').addEventListener('click', () => {
+    try {
+      c.toBlob((b) => {
+        if (!b) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = `${(ticker || 'meme').toLowerCase()}-meme.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }, 'image/png');
+    } catch (e) {
+      $('err').hidden = false;
+      $('err').textContent = "couldn't save this one. try another browser.";
+    }
+  });
+  chips($('poses'), Object.keys(POSES), 'pose');
+  chips($('layouts'), LAYOUTS, 'layout');
+  chips($('bgs'), BGS, 'bg');
+  draw();
+  Promise.all([load(logoUrl), load(bannerUrl)]).then(([l, b]) => { logo = l; banner = b; draw(); });
+};
+// the coin comes from the page that embeds this (postMessage), or the fragment when opened on its own
+if (location.hash.length > 1) start(new URLSearchParams(location.hash.slice(1)));
+addEventListener('message', (e) => {
+  if (e.source === parent && e.data && e.data.wagbiTool === 'meme' && typeof e.data.params === 'string') start(new URLSearchParams(e.data.params));
+});
+</script>
+</body>
+</html>

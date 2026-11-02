@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f4f4f1">
+<title>wagbi</title>
+<meta property="og:title" content="wagbi">
+<meta property="og:description" content="one sentence. one coin.">
+<meta property="og:image" content="https://wagbi.fun/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://wagbi.fun/og.png">
+
+<meta name="description" content="one sentence. one coin. type an idea and wagbi makes the name, ticker, logo and banner. then launch it on pump.fun, paid from any wallet.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3CclipPath id='o'%3E%3Ccircle cx='100' cy='100' r='78'/%3E%3C/clipPath%3E%3C/defs%3E%3Ccircle cx='100' cy='100' r='78' fill='%230b0b0c'/%3E%3Cg clip-path='url(%23o)'%3E%3Ccircle cx='128' cy='72' r='78' fill='none' stroke='%23f4f4f1' stroke-width='7'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600&display=swap">
+<link rel="stylesheet" href="/launch.css">
+<style>
+:root {
+  --paper: #f4f4f1;
+  --paper2: #efefeb;
+  --ink: #0b0b0c;
+  --ink2: #4b4b47;
+  --ink3: #8e8e88;
+  --line: rgba(11, 11, 12, .085);
+  --line2: rgba(11, 11, 12, .15);
+  --surface: #fafaf8;
+  --bubble: #e9e9e4;
+  --hover: rgba(11, 11, 12, .04);
+  --cur: rgba(11, 11, 12, .065);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --side: 276px;
+  --col: 720px;
+  --wide: 1100px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; }
+body {
+  font-family: Manrope, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100svh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+::selection { background: var(--ink); color: var(--paper); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* the mark */
+.mark { display: block; overflow: visible; }
+.mark .arc { transform-box: view-box; transform-origin: 50% 50%; }
+
+/* ---------- sidebar ---------- */
+.side {
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 30;
+  width: var(--side);
+  display: flex; flex-direction: column;
+  background: var(--paper2);
+  border-right: 1px solid var(--line);
+}
+.side-top { padding: 26px 24px 22px; }
+.brand { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; font-weight: 600; font-size: 18px; letter-spacing: -.03em; }
+.brand .mark { width: 24px; height: 24px; }
+.side-nav { padding: 0 12px; }
+.new, .row {
+  display: flex; align-items: center; width: 100%;
+  border-radius: 12px; text-decoration: none; text-align: left;
+  transition: background-color .2s var(--ease);
+}
+.new { padding: 10px 12px; font-size: 14.5px; letter-spacing: -.01em; }
+.new:hover, .row:hover { background: var(--hover); }
+.row.cur { background: var(--cur); }
+.side-label { padding: 28px 24px 8px; font-size: 12.5px; color: var(--ink3); }
+.list {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 12px 16px;
+  scrollbar-width: thin; scrollbar-color: rgba(11, 11, 12, .15) transparent;
+}
+.row { gap: 12px; padding: 8px 12px 8px 10px; margin-bottom: 2px; }
+.row-logo { width: 32px; height: 32px; flex: none; border-radius: 50%; overflow: hidden; background: var(--bubble); position: relative; }
+.row-logo img, .row-logo .mark { display: block; width: 100%; height: 100%; }
+.row.just .row-logo img { animation: fade .7s var(--ease) both; }
+.row-text { flex: 1; min-width: 0; line-height: 1.3; }
+.row-name { display: block; font-size: 14px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { display: block; font-size: 12.5px; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.row time { flex: none; align-self: flex-start; margin-top: 1px; font-size: 12px; color: var(--ink3); }
+.row.making .row-logo { background: transparent; }
+.row.making .row-name { color: var(--ink2); }
+.row.fresh { animation: rowin .7s var(--ease) both; }
+@keyframes rowin { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes fade { from { opacity: 0; } }
+.side-foot {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 18px 24px 22px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink3);
+}
+.side-foot a { color: var(--ink2); text-decoration: none; transition: color .2s; }
+.side-foot a:hover { color: var(--ink); }
+.scrim { display: none; }
+
+/* ---------- main ---------- */
+.main { margin-left: var(--side); min-height: 100svh; display: flex; flex-direction: column; min-width: 0; }
+.bar { display: flex; align-items: center; gap: 8px; padding: 26px 40px 0; min-height: 56px; }
+.bar .word { display: none; font-weight: 600; font-size: 18px; letter-spacing: -.03em; text-decoration: none; }
+.tagline { margin-left: auto; font-size: 14px; color: var(--ink3); }
+.menu { display: none; }
+
+/* new coin: the prompt is the page */
+.hero {
+  min-height: calc(100svh - 56px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px 32px 15vh;
+  transition: opacity .3s var(--ease), transform .3s var(--ease);
+}
+.hero[hidden], .thread[hidden], .made[hidden] { display: none; }
+.hero.leaving { opacity: 0; transform: translateY(-8px); }
+.hero-mark { width: 68px; height: 68px; margin-bottom: 34px; }
+.hero-mark .mark { width: 100%; height: 100%; }
+h1 {
+  font-weight: 500;
+  font-size: clamp(32px, 3vw, 54px);
+  line-height: 1.08;
+  letter-spacing: -.035em;
+  text-align: center;
+  margin-bottom: 44px;
+}
+
+.composer { width: min(var(--col), 100%); }
+.field {
+  display: block; position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 30px;
+  padding: 23px 132px 23px 30px;
+  box-shadow: 0 1px 1px rgba(11, 11, 12, .02), 0 18px 40px -26px rgba(11, 11, 12, .22);
+  transition: border-color .25s var(--ease);
+  cursor: text;
+}
+.field:focus-within { border-color: rgba(11, 11, 12, .3); }
+.field textarea {
+  display: block; width: 100%;
+  font: inherit; font-size: 19px; line-height: 28px; letter-spacing: -.012em;
+  color: var(--ink); caret-color: var(--ink);
+  background: transparent; border: 0; outline: 0; resize: none;
+  height: 28px; overflow: hidden;
+}
+.ph {
+  position: absolute; left: 31px; right: 132px; top: 23px;
+  font-size: 19px; line-height: 28px; letter-spacing: -.012em;
+  color: var(--ink3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+  transition: opacity .5s var(--ease), transform .5s var(--ease);
+}
+.ph.out { opacity: 0; transform: translateY(-7px); }
+.ph.pre { opacity: 0; transform: translateY(7px); transition: none; }
+.field.has .ph { opacity: 0; transition: opacity .12s; }
+.hint {
+  position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
+  font-size: 13px; color: var(--ink3);
+  opacity: 0; transition: opacity .25s var(--ease);
+  pointer-events: none;
+}
+.field.has .hint { opacity: 1; }
+
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 24px; max-width: 900px; }
+.chip {
+  font-size: 14px; color: var(--ink2);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 16px;
+  transition: color .2s, border-color .2s, background-color .2s;
+}
+.chip:hover { color: var(--ink); border-color: var(--line2); background: rgba(11, 11, 12, .025); }
+
+.rise { animation: rise .9s var(--ease) both; animation-delay: var(--d, 0ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+/* a coin's chat */
+.thread { width: min(var(--col), 100% - 64px); margin: 0 auto; padding: 28px 0 96px; }
+.me { display: flex; justify-content: flex-end; margin: 12px 0 30px; }
+.me p {
+  background: var(--bubble); border-radius: 22px;
+  padding: 12px 19px; max-width: 82%;
+  font-size: 16px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.bot { margin-bottom: 64px; }
+.bot-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.bot-head .mark { width: 30px; height: 30px; flex: none; }
+.note { font-size: 15px; color: var(--ink2); line-height: 1.45; }
+.note q { quotes: "\201C" "\201D"; color: var(--ink); }
+.note, .kit-bio, .card-q, .made-sub { text-wrap: pretty; }
+
+.steps { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 26px; margin: 0 0 22px 44px; font-size: 14px; color: var(--ink3); }
+.steps li { display: flex; align-items: center; gap: 8px; }
+.steps li.up { transition: opacity .8s var(--ease), transform .8s var(--ease), color .4s var(--ease); }
+.steps li.now { color: var(--ink); }
+.steps li.done { color: var(--ink2); }
+.steps i { width: 12px; height: 12px; position: relative; flex: none; }
+.steps i::before {
+  content: ""; position: absolute; inset: 3px; border-radius: 50%;
+  background: var(--ink3); transition: background .3s, transform .3s var(--ease);
+}
+.steps li.now i::before { background: var(--ink); animation: breathe 1.2s ease-in-out infinite; }
+.steps li.done i::before { inset: 0; background: var(--ink); }
+.steps li.done i::after {
+  content: ""; position: absolute; left: 3.6px; top: 2.4px; width: 3px; height: 5.5px;
+  border: solid var(--paper); border-width: 0 1.5px 1.5px 0; transform: rotate(42deg);
+}
+@keyframes breathe { 50% { transform: scale(.55); opacity: .5; } }
+
+.kit { background: var(--surface); border: 1px solid var(--line); border-radius: 26px; overflow: hidden; }
+.kit-banner { aspect-ratio: 3 / 1; background: var(--bubble); }
+.kit-banner svg { display: block; width: 100%; height: 100%; }
+.kit-body { padding: 0 30px 30px; }
+.kit-logo {
+  width: 120px; height: 120px; border-radius: 50%; overflow: hidden;
+  margin-top: -60px; position: relative;
+  box-shadow: 0 0 0 5px var(--surface);
+  background: var(--bubble);
+}
+.kit-logo svg { display: block; width: 100%; height: 100%; }
+.kit-banner img, .kit-logo img { display: block; width: 100%; height: 100%; object-fit: cover; animation: fade .7s var(--ease) both; }
+.kit-banner.wait, .kit-logo.wait { animation: wait 1.8s ease-in-out infinite; }
+@keyframes wait { 50% { background-color: #e0e0da; } }
+.kit-id { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-top: 18px; }
+.kit-id h2 { font-size: 28px; font-weight: 600; letter-spacing: -.03em; line-height: 1.15; }
+.kit-id span { font-size: 16px; font-weight: 600; color: var(--ink3); letter-spacing: .01em; }
+.kit-bio { margin-top: 8px; font-size: 16px; color: var(--ink2); max-width: 52ch; }
+
+.go { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 20px; margin-top: 22px; }
+.launch {
+  height: 54px; padding: 0 30px; min-width: 232px;
+  border-radius: 999px; background: var(--ink); color: var(--paper);
+  font-size: 16px; font-weight: 600; letter-spacing: -.01em;
+  position: relative; overflow: hidden;
+  transition: background-color .2s, transform .2s var(--ease);
+}
+.launch:hover { background: #222225; }
+.launch:active { transform: scale(.985); }
+.launch span { display: block; transition: opacity .3s var(--ease), transform .3s var(--ease); }
+.launch .b { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: translateY(10px); }
+.launch.soon .a { opacity: 0; transform: translateY(-10px); }
+.launch.soon .b { opacity: 1; transform: none; }
+.go small { font-size: 13.5px; color: var(--ink3); }
+
+.up { opacity: 0; transform: translateY(12px); transition: opacity .8s var(--ease), transform .8s var(--ease); }
+.up.on { opacity: 1; transform: none; }
+.thread .composer { margin: 8px 0 0; }
+.thread .composer.away { display: none; }
+
+/* made with wagbi (below the new coin screen) */
+.made { width: min(var(--wide), 100% - 80px); margin: 0 auto; padding: 72px 0 140px; }
+.made-head { display: flex; align-items: center; gap: 14px; }
+.made h2 { font-size: 30px; font-weight: 500; letter-spacing: -.035em; line-height: 1.2; }
+.pill { font-size: 12px; font-weight: 600; color: var(--ink3); border: 1px solid var(--line2); border-radius: 999px; padding: 3px 10px 4px; }
+.made-sub { margin-top: 8px; font-size: 16px; color: var(--ink3); }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 44px; }
+.card {
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 26px;
+  padding: 30px 26px 28px;
+  transition: border-color .25s var(--ease), transform .35s var(--ease);
+}
+.card:hover { border-color: var(--line2); transform: translateY(-2px); }
+.card-logo { width: 116px; height: 116px; border-radius: 50%; overflow: hidden; margin-bottom: 30px; background: var(--bubble); }
+.card-logo svg { display: block; width: 100%; height: 100%; transition: transform .6s var(--ease); }
+.card:hover .card-logo svg { transform: scale(1.04); }
+.card-id { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 9px; }
+.card-id b { font-weight: 600; font-size: 17px; letter-spacing: -.025em; }
+.card-id span { font-weight: 600; font-size: 13px; color: var(--ink3); }
+.card-q { margin-top: 10px; font-size: 14.5px; line-height: 1.45; color: var(--ink3); }
+.card-q::before { content: "\201C"; }
+.card-q::after { content: "\201D"; }
+
+/* big screens */
+@media (min-width: 1700px) {
+  :root { --side: 296px; --col: 780px; --wide: 1240px; }
+  .hero-mark { width: 76px; height: 76px; margin-bottom: 38px; }
+  .field textarea, .ph { font-size: 20px; }
+  .made h2 { font-size: 34px; }
+  .card-logo { width: 140px; height: 140px; }
+}
+@media (max-width: 1240px) and (min-width: 861px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* phones and small tablets: the sidebar slides over the page */
+@media (max-width: 860px) {
+  .side {
+    width: min(304px, 86vw);
+    transform: translateX(-102%);
+    transition: transform .4s var(--ease), box-shadow .4s var(--ease);
+  }
+  body.nav { overflow: hidden; }
+  body.nav .side { transform: none; box-shadow: 30px 0 80px -40px rgba(11, 11, 12, .35); }
+  .scrim {
+    display: block; position: fixed; inset: 0; z-index: 25;
+    background: rgba(11, 11, 12, .14);
+    opacity: 0; pointer-events: none; transition: opacity .35s var(--ease);
+  }
+  body.nav .scrim { opacity: 1; pointer-events: auto; }
+  .main { margin-left: 0; }
+  .bar { padding: 14px 20px 0 8px; min-height: 54px; gap: 0; }
+  .menu {
+    display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 5px;
+    width: 42px; height: 42px; padding: 0 12px; border-radius: 10px;
+  }
+  .menu:active { background: var(--hover); }
+  .menu span { display: block; height: 1.6px; width: 18px; background: var(--ink); border-radius: 2px; }
+  .menu span + span { width: 12px; }
+  .bar .word { display: inline; }
+  .tagline { font-size: 13px; }
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .hero { min-height: calc(100svh - 54px); padding: 16px 16px 14vh; }
+  .hero-mark { width: 54px; height: 54px; margin-bottom: 26px; }
+  h1 { font-size: 30px; margin-bottom: 30px; }
+  .field { border-radius: 24px; padding: 17px 20px; }
+  .field textarea, .ph { font-size: 17px; line-height: 26px; }
+  .field textarea { height: 26px; }
+  .ph { left: 21px; right: 20px; top: 17px; }
+  .hint { display: none; }
+  .chips { gap: 8px; margin-top: 18px; }
+  .chip { font-size: 13.5px; padding: 7px 13px; }
+  .chip:nth-child(n+3) { display: none; }
+  .thread { width: calc(100% - 32px); padding-top: 16px; }
+  .me p { max-width: 90%; }
+  .steps { margin-left: 0; gap: 8px 18px; }
+  .kit { border-radius: 22px; }
+  .kit-body { padding: 0 20px 22px; }
+  .kit-logo { width: 88px; height: 88px; margin-top: -44px; box-shadow: 0 0 0 4px var(--surface); }
+  .kit-id { margin-top: 14px; }
+  .kit-id h2 { font-size: 23px; }
+  .kit-id span { font-size: 15px; }
+  .kit-bio { font-size: 15px; }
+  .launch { width: 100%; }
+  .go small { width: 100%; text-align: center; }
+  .made { width: calc(100% - 32px); padding: 64px 0 88px; }
+  .made h2 { font-size: 25px; }
+  .made-sub { font-size: 15px; }
+  .grid { grid-template-columns: 1fr; gap: 10px; margin-top: 28px; }
+  .card { display: grid; grid-template-columns: 68px 1fr; column-gap: 18px; align-items: center; padding: 16px 18px; border-radius: 22px; }
+  .card-logo { grid-row: 1 / span 2; width: 68px; height: 68px; margin: 0; }
+  .card-id { align-self: end; }
+  .card-id b { font-size: 16.5px; }
+  .card-id span { font-size: 13px; }
+  .card-q { align-self: start; margin-top: 2px; font-size: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .up { opacity: 1; transform: none; }
+}
+</style>
+<link rel="stylesheet" href="/brand.css">
+</head>
+<body>
+
+<aside class="side" id="side" aria-label="your coins">
+  <div class="side-top">
+    <a class="brand" href="#/" id="brand"><span id="brandMark"></span>wagbi</a>
+  </div>
+  <nav class="side-nav">
+    <a class="new" href="#/" id="newRow">new coin</a>
+    <a class="new" href="#/coins" id="coinsRow">coins</a>
+  </nav>
+  <p class="side-label" id="sideLabel">examples</p>
+  <div class="list" id="list"></div>
+  <div class="side-foot">
+    <button class="gear" id="settingsBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="settingsMenu">settings</button>
+    <span>made by typing</span>
+  </div>
+  <div class="settings" id="settingsMenu" hidden>
+    <button type="button" class="set-item" id="signInBtn" disabled>sign in with google <em>soon</em></button>
+    <div class="g-btn" id="gBtn" hidden></div>
+    <p class="set-note" id="authNote">signed out, your chats live on this device only.</p>
+    <button type="button" class="set-item" id="signOutBtn" hidden>sign out</button>
+    <button type="button" class="set-item danger" id="clearBtn">clear all chat history</button>
+    <div class="set-confirm" id="clearConfirm" hidden>
+      <p id="clearText">delete every coin chat from this device? the coins already made stay on wagbi.</p>
+      <div><button type="button" class="set-btn" id="clearNo">cancel</button><button type="button" class="set-btn danger" id="clearYes">delete all</button></div>
+    </div>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<div class="main">
+  <header class="bar">
+    <button class="menu" id="menu" type="button" aria-label="your coins" aria-controls="side" aria-expanded="false"><span></span><span></span></button>
+    <a class="word" href="#/">wagbi</a>
+    <span class="tagline">one sentence. one coin.</span>
+    <span class="bar-links">
+      <a class="bar-x" href="https://x.com/wagbifun" target="_blank" rel="noopener">@wagbifun</a>
+      <button class="bar-ca" id="caBtn" type="button" disabled>CA soon</button>
+    </span>
+  </header>
+
+  <main>
+    <section class="hero" id="hero">
+      <div class="hero-mark rise" style="--d:60ms" id="heroMark"></div>
+      <h1 class="rise" style="--d:140ms">what coin should we make?</h1>
+      <form class="composer rise" style="--d:220ms" id="composer" autocomplete="off">
+        <label class="field" id="field">
+          <textarea id="prompt" rows="1" maxlength="140" spellcheck="false" enterkeyhint="go" aria-label="describe your coin in one sentence" autofocus></textarea>
+          <span class="ph" id="ph" aria-hidden="true">a raccoon who runs a hedge fund</span>
+          <span class="hint" aria-hidden="true">press enter</span>
+          <button class="mic" id="mic" type="button" aria-label="speak your idea" title="speak your idea"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </label>
+      </form>
+      <div class="chips rise" style="--d:320ms" id="chips"></div>
+    </section>
+
+    <section class="thread" id="thread" aria-live="polite" hidden></section>
+
+    <section class="coins" id="coins" hidden>
+      <div class="coins-head">
+        <h2>coins</h2>
+        <p class="coins-sub">every coin made on wagbi, newest first.</p>
+      </div>
+      <div class="coins-filter" id="coinsFilter" role="group" aria-label="show">
+        <button type="button" class="on" data-f="all">all</button>
+        <button type="button" data-f="live">launched</button>
+      </div>
+      <ul class="coins-list" id="coinsList"></ul>
+      <button type="button" class="lp-btn ghost coins-more" id="coinsMore" hidden>show more</button>
+    </section>
+
+    <section class="made" id="made">
+      <div class="made-head">
+        <h2>made with wagbi</h2>
+        <span class="pill">examples</span>
+      </div>
+      <p class="made-sub">each one came from a single sentence.</p>
+      <div class="grid" id="grid"></div>
+    </section>
+  </main>
+</div>
+
+<script src="/brand.js"></script>
+<script src="/examples.js"></script>
+<script src="/launch.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "wagbi-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "wagbi.fun: one sentence in, a coin kit out, launched on pump.fun by deposit. static page + functions (api/make, api/kit, api/launch).",
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "@meteora-ag/dynamic-bonding-curve-sdk": "2.0.0",
+    "@pump-fun/pump-sdk": "4.0.0",
+    "@resvg/resvg-js": "2.6.2",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
+    "@vercel/blob": "2.8.2",
+    "@vercel/functions": "3.10.5",
+    "bn.js": "5.2.5",
+    "obscenity": "0.4.6",
+    "printer-engine": "file:vendor/printer-engine-2.4.0.tgz",
+    "qrcode": "1.5.4"
+  },
+  "scripts": {
+    "test": "node --test test/launch.test.mjs test/launch-pads.test.mjs test/auth.test.mjs test/engine.test.mjs"
+  },
+  "overrides": {
+    "rpc-websockets": {
+      "uuid": "^9.0.1"
+    }
+  }
+}

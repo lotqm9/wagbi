@@ -1,0 +1,93 @@
+{
+  "framework": null,
+  "buildCommand": "",
+  "functions": {
+    "api/make.js": {
+      "maxDuration": 300,
+      "includeFiles": "api/_fonts/**"
+    },
+    "api/kit/[id].js": {
+      "maxDuration": 10
+    },
+    "api/launch.js": {
+      "maxDuration": 300
+    },
+    "api/coins.js": {
+      "maxDuration": 30
+    },
+    "api/transcribe.js": {
+      "maxDuration": 40
+    },
+    "api/auth.js": {
+      "maxDuration": 15
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/chats",
+      "destination": "/api/auth?op=chats"
+    },
+    {
+      "source": "/api/launch/config",
+      "destination": "/api/launch?op=config"
+    },
+    {
+      "source": "/api/launch/quote",
+      "destination": "/api/launch?op=quote"
+    },
+    {
+      "source": "/api/launch/cron",
+      "destination": "/api/launch?op=cron"
+    },
+    {
+      "source": "/api/launch/coin/:kit",
+      "destination": "/api/launch?op=coin&kit=:kit"
+    },
+    {
+      "source": "/api/launch/:id/refund",
+      "destination": "/api/launch?op=refund&id=:id"
+    },
+    {
+      "source": "/api/launch/:id",
+      "destination": "/api/launch?op=status&id=:id"
+    },
+    {
+      "source": "/k/:kit",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/launch/cron",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/tool/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "sandbox allow-scripts allow-downloads; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https://*.public.blob.vercel-storage.com; connect-src 'none'; font-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
+    }
+  ]
+}

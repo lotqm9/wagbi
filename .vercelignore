@@ -1,0 +1,5 @@
+shots
+img
+.env*
+node_modules
+test
